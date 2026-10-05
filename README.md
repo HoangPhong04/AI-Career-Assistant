@@ -36,7 +36,7 @@ Feedback + Report
 
 GitHub:
 
-urlAI-Career-Assistant trên GitHubhttps://github.com/HoangPhong04/AI-Career-Assistant.git
+url:AI-Career-Assistant trên GitHub: https://github.com/HoangPhong04/AI-Career-Assistant.git
 
 ## 3. Tech Stack
 
