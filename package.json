@@ -17,11 +17,14 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
+    "@tailwindcss/postcss": "^4.3.3",
     "dotenv": "^17.0.0",
     "next": "latest",
     "pg": "^8.16.0",
+    "postcss": "^8.5.28",
     "react": "latest",
     "react-dom": "latest",
+    "tailwindcss": "^4.3.3",
     "zod": "^4.0.0"
   },
   "devDependencies": {
