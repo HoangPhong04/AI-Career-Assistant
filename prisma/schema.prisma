@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../app/generated/prisma"
 }
 
@@ -7,91 +7,193 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserRole {
-  USER
-  ADMIN
-}
-
-enum CVStatus {
-  UPLOADED
-  PARSED
-  ANALYZED
-  FAILED
-}
-
-enum InterviewStatus {
-  CREATED
-  IN_PROGRESS
-  COMPLETED
-}
-
 model User {
-  id           String            @id @default(cuid())
-  email        String            @unique
-  passwordHash String?
-  fullName     String?
-  role         UserRole          @default(USER)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id           String              @id @default(uuid()) @db.Uuid
+  email        String              @unique @db.VarChar(255)
+  passwordHash String              @map("password_hash") @db.VarChar(255)
+  fullName     String?             @map("full_name") @db.VarChar(100)
+  role         String              @default("user") @db.VarChar(20)
+  avatarUrl    String?             @map("avatar_url") @db.VarChar(255)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamp(6)
   cvs          CV[]
+  careerGoals  CareerGoal[]
   roadmaps     CareerRoadmap[]
   interviews   InterviewSession[]
+  educations   Education[]
+  experiences  Experience[]
+  projects     Project[]
+
+  @@map("users")
 }
 
 model CV {
-  id             String     @id @default(cuid())
-  userId         String
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  originalName   String
-  filePath       String
-  fileType       String
-  extractedText  String?
-  status         CVStatus   @default(UPLOADED)
-  analysisJson   Json?
-  score          Float?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  roadmaps       CareerRoadmap[]
+  id            String         @id @default(uuid()) @db.Uuid
+  userId        String         @map("user_id") @db.Uuid
+  originalName  String         @map("original_name") @db.VarChar(255)
+  filePath      String         @map("file_path") @db.VarChar(255)
+  fileType      String         @map("file_type") @db.VarChar(50)
+  extractedText String?         @map("extracted_text") @db.Text
+  status        String         @default("UPLOADED") @db.VarChar(20)
+  analysisJson  Json?          @map("analysis_json") @db.JsonB
+  score         Decimal?       @db.Decimal(5, 2)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamp(6)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roadmaps      CareerRoadmap[]
+  skills        CVSkill[]
+
+  @@map("cvs")
+}
+
+model CVSkill {
+  id        String   @id @default(uuid()) @db.Uuid
+  cvId      String   @map("cv_id") @db.Uuid
+  skillId   String   @map("skill_id") @db.Uuid
+  level     String?  @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  cv        CV       @relation(fields: [cvId], references: [id], onDelete: Cascade)
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@map("cv_skill")
+}
+
+model Skill {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(100)
+  category    String?   @db.VarChar(50)
+  description String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  cvs         CVSkill[]
+
+  @@map("skill")
+}
+
+model CareerGoal {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @map("user_id") @db.Uuid
+  title       String          @db.VarChar(100)
+  description String?         @db.Text
+  targetRole  String          @map("target_role") @db.VarChar(100)
+  targetLevel String?         @map("target_level") @db.VarChar(20)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamp(6)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roadmaps    CareerRoadmap[]
+
+  @@map("career_goal")
 }
 
 model CareerRoadmap {
-  id             String   @id @default(cuid())
-  userId         String
-  cvId           String?
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cv             CV?      @relation(fields: [cvId], references: [id], onDelete: SetNull)
-  targetRole     String
-  currentLevel   String?
-  skillGapJson   Json?
-  roadmapJson    Json?
-  progress       Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  cvId          String?       @map("cv_id") @db.Uuid
+  goalId        String?       @map("goal_id") @db.Uuid
+  targetRole    String        @map("target_role") @db.VarChar(100)
+  targetLevel   String?       @map("target_level") @db.VarChar(20)
+  currentSkills Json?         @map("current_skills") @db.JsonB
+  missingSkills Json?         @map("missing_skills") @db.JsonB
+  roadmapJson   Json?         @map("roadmap_json") @db.JsonB
+  status        String        @default("DRAFT") @db.VarChar(20)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamp(6)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cv            CV?           @relation(fields: [cvId], references: [id], onDelete: SetNull)
+  goal          CareerGoal?   @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  steps         RoadmapStep[]
+
+  @@map("career_roadmap")
+}
+
+model RoadmapStep {
+  id          String        @id @default(uuid()) @db.Uuid
+  roadmapId   String        @map("roadmap_id") @db.Uuid
+  title       String        @db.VarChar(100)
+  description String?       @db.Text
+  orderIndex  Int           @map("order_index")
+  startDate   DateTime?     @map("start_date") @db.Date
+  endDate     DateTime?     @map("end_date") @db.Date
+  status      String        @default("PENDING") @db.VarChar(255)
+  resources   Json?         @db.JsonB
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  roadmap     CareerRoadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+
+  @@map("roadmap_step")
 }
 
 model InterviewSession {
-  id             String           @id @default(cuid())
-  userId         String
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  targetRole     String
-  status         InterviewStatus  @default(CREATED)
-  overallScore   Float?
-  feedbackJson   Json?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  questions      InterviewQuestion[]
+  id           String              @id @default(uuid()) @db.Uuid
+  userId       String              @map("user_id") @db.Uuid
+  position     String              @db.VarChar(100)
+  level        String?             @db.VarChar(20)
+  type         String?             @db.VarChar(20)
+  status       String              @default("CREATED") @db.VarChar(20)
+  overallScore Decimal?            @map("overall_score") @db.Decimal(5, 2)
+  startedAt    DateTime?           @map("started_at") @db.Timestamp(6)
+  endedAt      DateTime?           @map("ended_at") @db.Timestamp(6)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamp(6)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions    InterviewQuestion[]
+
+  @@map("interview_sessions")
 }
 
 model InterviewQuestion {
-  id           String           @id @default(cuid())
-  sessionId    String
+  id           String           @id @default(uuid()) @db.Uuid
+  sessionId    String           @map("session_id") @db.Uuid
+  questionText String           @map("question_text") @db.Text
+  questionType String           @map("question_type") @db.VarChar(20)
+  userAnswer   String?          @map("user_answer") @db.Text
+  aiFeedback   String?          @map("ai_feedback") @db.Text
+  score        Decimal?         @db.Decimal(5, 2)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
   session      InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  question     String
-  category     String?
-  expectedAnswer Json?
-  userAnswer   String?
-  score        Float?
-  feedback     String?
-  orderNo      Int
-  createdAt    DateTime         @default(now())
+
+  @@map("interview_questions")
+}
+
+model Education {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  schoolName  String    @map("school_name") @db.VarChar(255)
+  degree      String?   @db.VarChar(100)
+  major       String?   @db.VarChar(100)
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  description String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("education")
+}
+
+model Experience {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  companyName String    @map("company_name") @db.VarChar(255)
+  position    String?   @db.VarChar(100)
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  description String?   @db.Text
+  isCurrent   Boolean   @default(false) @map("is_current")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("experience")
+}
+
+model Project {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  name         String    @db.VarChar(255)
+  description  String?   @db.Text
+  technologies String?   @db.VarChar(255)
+  startDate    DateTime? @map("start_date") @db.Date
+  endDate      DateTime? @map("end_date") @db.Date
+  url          String?   @db.VarChar(255)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("project")
 }
