@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum CVStatus {
+  UPLOADED
+  PARSED
+  ANALYZED
+  FAILED
+}
+
+enum InterviewStatus {
+  CREATED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model User {
+  id           String            @id @default(cuid())
+  email        String            @unique
+  passwordHash String?
+  fullName     String?
+  role         UserRole          @default(USER)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  cvs          CV[]
+  roadmaps     CareerRoadmap[]
+  interviews   InterviewSession[]
+}
+
+model CV {
+  id             String     @id @default(cuid())
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originalName   String
+  filePath       String
+  fileType       String
+  extractedText  String?
+  status         CVStatus   @default(UPLOADED)
+  analysisJson   Json?
+  score          Float?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  roadmaps       CareerRoadmap[]
+}
+
+model CareerRoadmap {
+  id             String   @id @default(cuid())
+  userId         String
+  cvId           String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cv             CV?      @relation(fields: [cvId], references: [id], onDelete: SetNull)
+  targetRole     String
+  currentLevel   String?
+  skillGapJson   Json?
+  roadmapJson    Json?
+  progress       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model InterviewSession {
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetRole     String
+  status         InterviewStatus  @default(CREATED)
+  overallScore   Float?
+  feedbackJson   Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  questions      InterviewQuestion[]
+}
+
+model InterviewQuestion {
+  id           String           @id @default(cuid())
+  sessionId    String
+  session      InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question     String
+  category     String?
+  expectedAnswer Json?
+  userAnswer   String?
+  score        Float?
+  feedback     String?
+  orderNo      Int
+  createdAt    DateTime         @default(now())
+}
