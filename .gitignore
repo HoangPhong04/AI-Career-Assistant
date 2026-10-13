@@ -149,6 +149,10 @@ vite.config.ts.timestamp-*
 # Turbo Repo
 .turbo
 
+.env
+.env.*
+!.env.example
+
 uploads/*
 !uploads/.gitkeep
-/AI-Career-Assistant/
+
