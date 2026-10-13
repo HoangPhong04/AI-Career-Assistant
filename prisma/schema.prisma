@@ -32,7 +32,7 @@ model CV {
   userId        String         @map("user_id") @db.Uuid
   originalName  String         @map("original_name") @db.VarChar(255)
   filePath      String         @map("file_path") @db.VarChar(255)
-  fileType      String         @map("file_type") @db.VarChar(50)
+  fileType      String         @map("file_type") @db.VarChar(100)
   extractedText String?         @map("extracted_text") @db.Text
   status        String         @default("UPLOADED") @db.VarChar(20)
   analysisJson  Json?          @map("analysis_json") @db.JsonB
