@@ -1,4 +1,3 @@
-
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 const ALLOWED_TYPES = {
@@ -27,7 +26,7 @@ export type CVFileValidationResult =
     };
 
 export async function validateCVFile(
-  file: File,
+  file: File
 ): Promise<CVFileValidationResult> {
   if (file.size === 0) {
     return {
@@ -44,10 +43,16 @@ export async function validateCVFile(
       message: "File size must not exceed 5 MB.",
     };
   }
-
   const fileName = file.name.toLowerCase();
-  const extension = fileName.slice(fileName.lastIndexOf("."));
-
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex === -1) {
+    return {
+      valid: false,
+      code: "INVALID_EXTENSION",
+      message: "Only PDF and DOCX files are allowed.",
+    };
+  }
+  const extension = fileName.slice(dotIndex);
   if (!(extension in ALLOWED_TYPES)) {
     return {
       valid: false,
@@ -58,8 +63,8 @@ export async function validateCVFile(
 
   const cvExtension = extension as CVFileType;
   const expectedMime = ALLOWED_TYPES[cvExtension];
-
-  if (file.type !== expectedMime) {
+  const GENERIC_BINARY_MIME = "application/octet-stream";
+  if (file.type !== expectedMime && file.type !== GENERIC_BINARY_MIME) {
     return {
       valid: false,
       code: "INVALID_MIME_TYPE",
@@ -67,23 +72,23 @@ export async function validateCVFile(
     };
   }
 
-  const header = new Uint8Array(
-    await file.slice(0, 8).arrayBuffer(),
-  );
+  const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
 
-  const isPDF =
-    cvExtension === ".pdf" &&
-    header[0] === 0x25 && // %
-    header[1] === 0x50 && // P
-    header[2] === 0x44 && // D
-    header[3] === 0x46;   // F
+  let signatureValid = false;
 
-  const isDOCX =
-    cvExtension === ".docx" &&
-    header[0] === 0x50 && // P
-    header[1] === 0x4b;   // ZIP signature prefix
+  if (cvExtension === ".pdf") {
+    signatureValid =
+      header[0] === 0x25 && // %
+      header[1] === 0x50 && // P
+      header[2] === 0x44 && // D
+      header[3] === 0x46; // F
+  } else if (cvExtension === ".docx") {
+    signatureValid =
+      header[0] === 0x50 && // P
+      header[1] === 0x4b; // K (ZIP)
+  }
 
-  if (!isPDF && !isDOCX) {
+  if (!signatureValid) {
     return {
       valid: false,
       code: "INVALID_FILE_SIGNATURE",
