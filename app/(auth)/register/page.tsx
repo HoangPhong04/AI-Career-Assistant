@@ -1,1 +1,8 @@
-export default function RegisterPage() { return <main className='p-8'><h1>Đăng ký</h1></main>; }
+import { redirect } from "next/navigation";
+import { AuthForm } from "@/components/auth/auth-form";
+import { getCurrentUser } from "@/lib/auth";
+
+export default async function RegisterPage() {
+	if (await getCurrentUser()) redirect("/dashboard");
+	return <AuthForm mode="register" />;
+}
