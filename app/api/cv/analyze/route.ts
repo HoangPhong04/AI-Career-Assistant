@@ -1,8 +1,25 @@
 import { AIAnalysisError, analyzeCVWithAI } from "@/lib/ai/cv-analyzer";
+import { getCurrentUser } from "@/lib/auth";
 import { CVParserError, extractTextFormFile } from "@/lib/cv/cv-parser";
 import { prisma } from "@/lib/prisma";
+import { apiError } from "@/lib/utils";
 import { NextResponse } from "next/server";
+
+export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue");
+
+  return NextResponse.json({
+    message: "TODO: implement this API endpoint",
+  });
+}
+
 export async function POST(request: Request) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    return apiError(401, "UNAUTHENTICATED", "Please sign in to continue");
+  }
+
   let cvId: string | undefined;
   try {
     const body = await request.json().catch(() => ({}));
@@ -13,8 +30,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    const cv = await prisma.cV.findUnique({
-      where: { id: cvId },
+    const cv = await prisma.cV.findFirst({
+      where: { id: cvId, userId: currentUser.id },
     });
     if (!cv) {
       return NextResponse.json(
