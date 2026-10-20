@@ -4,6 +4,7 @@ import { CVParserError, extractTextFormFile } from "@/lib/cv/cv-parser";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/utils";
 import { NextResponse } from "next/server";
+import type { Prisma } from "@/app/generated/prisma";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
         status: "PARSED",
       },
     });
-    let analysisResult;
+    let analysisResult: Awaited<ReturnType<typeof analyzeCVWithAI>>;
     try {
       analysisResult = await analyzeCVWithAI(cleanText);
     } catch (aiError) {
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
     const updatedCV = await prisma.cV.update({
       where: { id: cvId },
       data: {
-        analysisJson: analysisResult as any,
+        analysisJson: analysisResult as Prisma.InputJsonValue,
         score: analysisResult.score,
         status: "ANALYZED",
       },
