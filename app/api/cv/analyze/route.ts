@@ -1,6 +1,8 @@
 import { AIAnalysisError, analyzeCVWithAI } from "@/lib/ai/cv-analyzer";
+import { getCurrentUser } from "@/lib/auth";
 import { CVParserError, extractTextFormFile } from "@/lib/cv/cv-parser";
 import { prisma } from "@/lib/prisma";
+import { apiError } from "@/lib/utils";
 import { NextResponse } from "next/server";
 export async function POST(request: Request) {
   let cvId: string | undefined;
@@ -130,3 +132,14 @@ export async function POST(request: Request) {
     );
   }
 }
+
+
+export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue");
+
+  return NextResponse.json({
+    message: "TODO: implement this API endpoint",
+  });
+}
+
