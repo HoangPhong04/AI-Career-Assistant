@@ -153,6 +153,11 @@ vite.config.ts.timestamp-*
 .env.*
 !.env.example
 
+# Next.js auto-generated agent rules (created by `next dev` / `next build`)
+AGENTS.md
+CLAUDE.md
+
 uploads/*
 !uploads/.gitkeep
 
+docs/timeline.md
