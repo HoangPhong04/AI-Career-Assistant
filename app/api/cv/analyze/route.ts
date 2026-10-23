@@ -1,19 +1,52 @@
+import { Prisma } from "@/app/generated/prisma";
 import { AIAnalysisError, analyzeCVWithAI } from "@/lib/ai/cv-analyzer";
 import { getCurrentUser } from "@/lib/auth";
 import { CVParserError, extractTextFormFile } from "@/lib/cv/cv-parser";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/utils";
 import { NextResponse } from "next/server";
-import type { Prisma } from "@/app/generated/prisma";
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user)
     return apiError(401, "UNAUTHENTICATED", "Please sign in to continue");
 
-  return NextResponse.json({
-    message: "TODO: implement this API endpoint",
-  });
+  const { searchParams } = new URL(request.url);
+  const cvId = searchParams.get("cvId");
+  try {
+    const whereCondition = cvId
+      ? { id: cvId, userId: user.id }
+      : { userId: user.id, status: "ANALYZED" };
+    const cv = await prisma.cV.findFirst({
+      where: whereCondition,
+
+      orderBy: {
+        createdAt: "desc",
+      },
+      select: {
+        id: true,
+        originalName: true,
+        status: true,
+        score: true,
+        extractedText: true,
+        analysisJson: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!cv) {
+      return NextResponse.json({ data: null });
+    }
+
+    // Trả dữ liệu về cho component hiển thị
+    return NextResponse.json({
+      data: cv,
+    });
+  } catch (error: unknown) {
+    console.error("GET CV error:", error);
+    return apiError(500, "INTERNAL_ERROR", "Failed to retrieve CV data.");
+  }
 }
 
 export async function POST(request: Request) {
