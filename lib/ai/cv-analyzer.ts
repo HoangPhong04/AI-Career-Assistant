@@ -26,8 +26,15 @@ const aiClient = new OpenAI({
 const CV_ANALYSIS_SYSTEM_PROMPT = `
     You are an expert HR Specialist and Technical Recruiter.
     Analyze the candidate's CV text and respond STRICTLY with a valid JSON object matching this exact template:
+ You are an expert HR Specialist and Technical Recruiter.
+    Your first task is to determine whether the provided document is actually a Curriculum Vitae (CV) / Resume of an
+  individual.
+
+    Respond STRICTLY with a valid JSON object matching this exact template:
 
     {
+      "isCV": true,
+      "rejectionReason": null,
       "personalInfo": {
         "fullName": "Candidate full name or null",
         "email": "email or null",
@@ -48,22 +55,26 @@ const CV_ANALYSIS_SYSTEM_PROMPT = `
       ],
       "education": [
         {
-          "institution": "University / School name",
+          "institution": "University name",
           "degree": "e.g. Bachelor",
-          "major": "e.g. Computer Science",
+          "major": "e.g. Information Technology",
           "graduationYear": "e.g. 2023"
         }
       ],
-      "strengths": ["Top highlight 1", "Top highlight 2", "Top highlight 3"],
-      "improvements": ["Specific improvement 1", "Specific improvement 2", "Specific improvement 3"],
+      "strengths": ["Top highlight 1", "Top highlight 2"],
+      "improvements": ["Specific improvement 1", "Specific improvement 2"],
       "score": 85,
       "assessmentSummary": "Overall evaluation of this candidate's profile."
     }
 
-    Rules:
-    - Do not output markdown code blocks (no \`\`\`json).
-    - If experience or education is not mentioned in the CV, return an empty array [].
-    - "score" must be an integer between 0 and 100.
+    Special Guardrail Rules:
+    - If the document is NOT a CV/resume (e.g. it is a research paper, book, invoice, project report, exam paper,
+  random code, legal contract):
+      Set "isCV": false
+      Set "rejectionReason": "Brief explanation why this document is not recognized as a resume (in Vietnamese, e.g.:
+  'Tài liệu được tải lên là báo cáo dự án/sách, không có thông tin hồ sơ ứng viên.')."
+      Set "score": 0
+      Set empty arrays [] for skills, experience, education, strengths, improvements.
     `;
 
 export async function analyzeCVWithAI(
