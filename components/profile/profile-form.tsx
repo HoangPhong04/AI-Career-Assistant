@@ -56,7 +56,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
       <label className="block text-sm font-medium text-neutral-800">
         Email
         <input
-          className="mt-2 block w-full rounded border border-neutral-300 bg-neutral-100 px-3 py-2.5 text-base text-neutral-600"
+          className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500"
           readOnly
           value={user.email}
         />
@@ -66,9 +66,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
         Họ và tên
         <input
           autoComplete="name"
-          className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+          className="mt-2 block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
           maxLength={100}
           onChange={(event) => setFullName(event.target.value)}
+          required
           value={fullName}
         />
       </label>
@@ -76,7 +77,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
       <label className="block text-sm font-medium text-neutral-800">
         Avatar URL
         <input
-          className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+          className="mt-2 block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
           maxLength={255}
           onChange={(event) => setAvatarUrl(event.target.value)}
           type="url"
@@ -85,10 +86,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
       </label>
 
       {message && <p className="text-sm text-emerald-800" role="status">{message}</p>}
-      {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
+      {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
 
       <button
-        className="rounded bg-emerald-800 px-4 py-2.5 font-semibold text-white hover:bg-emerald-900 disabled:opacity-60"
+        className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-60"
         disabled={isSubmitting}
         type="submit"
       >
