@@ -1,13 +1,18 @@
-import { NextResponse } from "next/server";
-
+import { getCurrentUser } from "@/lib/auth";
 import { deleteCVFile, saveCVFile } from "@/lib/cv/cv-storage";
 import { validateCVFile } from "@/lib/cv/validate-cv-file";
 import { prisma } from "@/lib/prisma";
+import { apiError } from "@/lib/utils";
+import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-const TEST_USER_ID = "761592b6-e73b-4c7e-9a7a-c1c7ffeeb53a";
 
 export async function POST(request: Request) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    return apiError(401, "UNAUTHENTICATED", "Vui lòng đăng nhập để tiếp tục.");
+  }
+
   let savedFilePath: string | null = null;
 
   try {
@@ -16,51 +21,51 @@ export async function POST(request: Request) {
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { message: "Please upload a CV file using the 'file' field." },
+        { message: "Vui lòng chọn file CV hợp lệ bằng trường 'file'." },
         { status: 400 }
       );
     }
 
+    // 1. Validate file (Size, Mime, Extension, Signature)
     const validation = await validateCVFile(file);
-
     if (!validation.valid) {
       const status = validation.code === "FILE_TOO_LARGE" ? 413 : 400;
-
       return NextResponse.json(
-        {
-          message: validation.message,
-          code: validation.code,
-        },
+        { message: validation.message, code: validation.code },
         { status }
       );
     }
-    const user = await prisma.user.findUnique({
+
+    // 2. Chống upload trùng lặp: Kiểm tra CV cùng tên đã phân tích thành công chưa
+    const existingCV = await prisma.cV.findFirst({
       where: {
-        id: TEST_USER_ID,
+        userId: currentUser.id,
+        originalName: file.name,
+        status: "ANALYZED",
       },
-      select: {
-        id: true,
-      },
+      orderBy: { createdAt: "desc" },
     });
-    if (!user) {
+
+    if (existingCV) {
       return NextResponse.json(
         {
-          message:
-            "Test user not found. Please create the test user and configure TEST_USER_ID.",
+          message: "Tài liệu này đã từng được tải lên và phân tích trước đó.",
+          code: "DUPLICATE_UPLOAD",
+          data: existingCV,
+          isDuplicate: true,
         },
-        { status: 500 }
+        { status: 200 } // Trả về 200 kèm data cũ để frontend dùng ngay, không cần gọi AI lại
       );
     }
 
-    // 5. Lưu file vào storage/cvs/
+    // 3. Lưu file vào ổ đĩa vật lý
     const savedFile = await saveCVFile(file, validation.extension);
-
     savedFilePath = savedFile.absolutePath;
 
-    // 6. Tạo bản ghi CV trong database
+    // 4. Tạo bản ghi trạng thái UPLOADED
     const cv = await prisma.cV.create({
       data: {
-        userId: user.id,
+        userId: currentUser.id,
         originalName: file.name,
         filePath: savedFile.filePath,
         fileType: validation.mimeType,
@@ -77,30 +82,28 @@ export async function POST(request: Request) {
       },
     });
 
-    // Database đã tạo CV thành công, không xóa file nữa.
-    savedFilePath = null;
-
-    // 7. Trả kết quả
+    savedFilePath = null; // Thành công, không cần dọn dẹp
     return NextResponse.json(
-      {
-        message: "CV uploaded successfully.",
-        data: cv,
-      },
+      { message: "CV uploaded successfully.", data: cv },
       { status: 201 }
     );
   } catch (error) {
     console.error("CV upload error:", error);
 
+    // Luôn dọn dẹp file thừa nếu gặp lỗi bất ngờ
     if (savedFilePath) {
       try {
         await deleteCVFile(savedFilePath);
       } catch (cleanupError) {
-        console.error("Failed to clean up uploaded CV:", cleanupError);
+        console.error("Failed to cleanup file:", cleanupError);
       }
     }
 
     return NextResponse.json(
-      { message: "An unexpected error occurred while uploading the CV." },
+      {
+        message: "Đã xảy ra lỗi hệ thống khi tải tệp lên.",
+        code: "INTERNAL_ERROR",
+      },
       { status: 500 }
     );
   }
