@@ -3,15 +3,15 @@ import fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import path from "path";
 import { PDFParse } from "pdf-parse";
+export type CVParserErrorCode =
+  | "FILE_NOT_FOUND"
+  | "UNSUPPORTED_FORMAT"
+  | "PASSWORD_PROTECTED"
+  | "CORRUPTED_FILE"
+  | "PARSE_FAILED"
+  | "EMPTY_TEXT";
 export class CVParserError extends Error {
-  constructor(
-    message: string,
-    public code:
-      | "FILE_NOT_FOUND"
-      | "UNSUPPORTED_FORMAT"
-      | "PARSE_FAILED"
-      | "EMPTY_TEXT"
-  ) {
+  constructor(message: string, public code: CVParserErrorCode) {
     super(message);
     this.name = "CVParserError";
   }
