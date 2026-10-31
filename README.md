@@ -83,6 +83,42 @@ npm install
 
 ## 7. Cấu hình Environment
 
+### Chạy trên máy Windows
+
+1. Tạo `.env` từ `.env.example` nếu dự án chưa có file `.env`:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   Nếu `.env` đã tồn tại, không chạy lệnh trên vì sẽ ghi đè cấu hình riêng của bạn.
+2. Sửa `DATABASE_URL` theo tài khoản PostgreSQL trên máy. Tạo `AUTH_SECRET` ngẫu nhiên dài ít nhất 32 ký tự bằng:
+
+   ```powershell
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+
+3. Để dùng các tính năng AI, tạo API key tại [Google AI Studio](https://aistudio.google.com/apikey), rồi điền vào `GEMINI_API_KEY` trong `.env`. Không chia sẻ khóa và không commit `.env`.
+4. Cài dependencies, tạo Prisma Client, áp dụng migration và kiểm tra kết nối:
+
+   ```powershell
+   npm install
+   npm run db:generate
+   npm run db:deploy
+   npm run db:test
+   ```
+
+   Kết quả kiểm tra thành công là `Database connection: OK`.
+5. Khởi động ứng dụng và mở [http://localhost:3000](http://localhost:3000):
+
+   ```powershell
+   npm run dev
+   ```
+
+   Đăng ký tài khoản trên trang rồi đăng nhập. Nếu sửa `.env` khi server đang chạy, nhấn `Ctrl+C` và chạy lại `npm run dev`.
+
+**Chỉ cần mở trang hoặc đăng ký/đăng nhập thì không cần Gemini API key.** Cần khóa để tạo câu hỏi phỏng vấn và nhận phản hồi AI.
+
 Copy:
 
 ```bash
@@ -100,11 +136,10 @@ Sau đó cấu hình:
 ```env
 DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/ai_career_assistant"
 
-AI_PROVIDER="openai"
-OPENAI_API_KEY="your-api-key"
-OPENAI_MODEL="gpt-4.1-mini"
+GEMINI_API_KEY="your-api-key"
+GEMINI_MODEL="gemini-3.5-flash"
 
-AUTH_SECRET="your-random-secret"
+AUTH_SECRET="your-random-secret-at-least-32-characters-long"
 
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
