@@ -165,3 +165,37 @@ body {
     padding-left: 20px;
   }
 }
+
+
+/* Upzi-style CV Scanner Animations */
+@keyframes cv-scan-laser {
+  0% {
+    top: 2%;
+    opacity: 0.85;
+  }
+  50% {
+    top: 96%;
+    opacity: 1;
+  }
+  100% {
+    top: 2%;
+    opacity: 0.85;
+  }
+}
+
+.animate-cv-scan {
+  animation: cv-scan-laser 3s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+@keyframes cv-pulse-glow {
+  0%, 100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+.animate-cv-glow {
+  animation: cv-pulse-glow 2s ease-in-out infinite;
+}
