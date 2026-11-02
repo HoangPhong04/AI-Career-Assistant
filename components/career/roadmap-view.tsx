@@ -70,11 +70,15 @@ const NEXT_STATUS: Record<StepStatus, StepStatus> = {
 export function RoadmapView({ roadmap, onBack }: RoadmapViewProps) {
   // stepKey -> status. stepKey is a stable slug from phase+task index.
   const [statuses, setStatuses] = useState<Record<string, StepStatus>>({});
+  const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const allTasks = roadmap.roadmap.phases.flatMap((phase, phaseIdx) =>
     phase.tasks.map((task, taskIdx) => ({
       key: `${phaseIdx}-${taskIdx}`,
+      flatIndex: roadmap.roadmap.phases
+        .slice(0, phaseIdx)
+        .reduce((count, previousPhase) => count + previousPhase.tasks.length, 0) + taskIdx,
       task,
     }))
   );
@@ -86,11 +90,12 @@ export function RoadmapView({ roadmap, onBack }: RoadmapViewProps) {
 
   function handleStatusChange(stepKey: string, next: StepStatus) {
     // Map the local step key back to its persisted RoadmapStep id.
-    const flatIndex = Number(stepKey.split("-")[1]);
-    const stepId = roadmap.stepIds[flatIndex];
+    const task = allTasks.find((item) => item.key === stepKey);
+    const stepId = task ? roadmap.stepIds[task.flatIndex] : undefined;
 
     // Optimistic update
-    const previous = statuses;
+    const previousStatus = statuses[stepKey] ?? "PENDING";
+    setError("");
     setStatuses((prev) => ({ ...prev, [stepKey]: next }));
 
     if (!stepId) {
@@ -107,11 +112,13 @@ export function RoadmapView({ roadmap, onBack }: RoadmapViewProps) {
         });
 
         if (!res.ok) {
-          // Revert on failure
-          setStatuses(previous);
+          const data: { error?: { message?: string }; message?: string } = await res.json().catch(() => ({}));
+          setStatuses((current) => ({ ...current, [stepKey]: previousStatus }));
+          setError(data.error?.message ?? data.message ?? "Không thể cập nhật tiến độ.");
         }
       } catch {
-        setStatuses(previous);
+        setStatuses((current) => ({ ...current, [stepKey]: previousStatus }));
+        setError("Không thể kết nối máy chủ khi cập nhật tiến độ.");
       }
     });
   }
@@ -152,6 +159,9 @@ export function RoadmapView({ roadmap, onBack }: RoadmapViewProps) {
         </div>
         <p className="mt-2 text-xs text-neutral-500">{percent}% hoàn thành</p>
       </div>
+      {error && (
+        <p className="mt-3 text-sm text-red-700" role="alert">{error}</p>
+      )}
 
       {/* Phases */}
       {roadmap.roadmap.phases.map((phase, phaseIdx) => (

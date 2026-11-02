@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { SkillGapView } from "./skill-gap-view";
 import { RoadmapView } from "./roadmap-view";
 
@@ -74,16 +74,59 @@ type Task = {
   milestones: string[];
 };
 
+type CVOption = {
+  id: string;
+  originalName: string;
+  analysisJson: {
+    skills?: {
+      technical?: string[];
+      soft?: string[];
+    };
+  } | null;
+};
+
 export function CareerForm() {
   const router = useRouter();
   const [targetRole, setTargetRole] = useState("");
   const [currentLevel, setCurrentLevel] = useState<typeof LEVELS[number]>("junior");
+  const [cvOptions, setCvOptions] = useState<CVOption[]>([]);
+  const [selectedCvId, setSelectedCvId] = useState("");
   const [view, setView] = useState<"form" | "gap" | "roadmap">("form");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [skillGapResult, setSkillGapResult] = useState<AnalyzeResponse["skillGap"] | null>(null);
   const [roadmapResult, setRoadmapResult] = useState<RoadmapResponse | null>(null);
+
+  useEffect(() => {
+    async function loadCVOptions() {
+      try {
+        const res = await fetch("/api/cv");
+        if (!res.ok) return;
+
+        const data: { data?: CVOption[] } = await res.json();
+        const analyzed = (data.data ?? []).filter(
+          (cv) => cv.analysisJson?.skills
+        );
+        setCvOptions(analyzed);
+      } catch {
+        setError("Không thể tải danh sách CV đã phân tích. Bạn vẫn có thể nhập role thủ công.");
+      }
+    }
+
+    void loadCVOptions();
+  }, []);
+
+  function selectedSkills() {
+    const cv = cvOptions.find((option) => option.id === selectedCvId);
+    const skills = cv?.analysisJson?.skills;
+    if (!skills) return undefined;
+
+    return {
+      technical: skills.technical ?? [],
+      soft: skills.soft ?? [],
+    };
+  }
 
   async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -94,7 +137,11 @@ export function CareerForm() {
       const res = await fetch("/api/career/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetRole, currentLevel }),
+        body: JSON.stringify({
+          targetRole,
+          currentLevel,
+          currentSkills: selectedSkills(),
+        }),
       });
 
       const data: AnalyzeResponse = await res.json();
@@ -117,10 +164,17 @@ export function CareerForm() {
     setIsGenerating(true);
 
     try {
-      const res = await fetch("/api/career/roadmap", {
+      const roadmapUrl = selectedCvId
+        ? `/api/career/roadmap?cvId=${encodeURIComponent(selectedCvId)}`
+        : "/api/career/roadmap";
+      const res = await fetch(roadmapUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetRole, currentLevel }),
+        body: JSON.stringify({
+          targetRole,
+          currentLevel,
+          currentSkills: selectedSkills(),
+        }),
       });
 
       const data: RoadmapResponse = await res.json();
@@ -182,6 +236,25 @@ export function CareerForm() {
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="block text-sm font-medium text-neutral-800">
+              CV đã phân tích
+              <select
+                className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+                onChange={(e) => setSelectedCvId(e.target.value)}
+                value={selectedCvId}
+              >
+                <option value="">Không chọn CV (nhập role thủ công)</option>
+                {cvOptions.map((cv) => (
+                  <option key={cv.id} value={cv.id}>
+                    {cv.originalName}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-neutral-500">
+                Chọn CV để AI sử dụng skills đã phân tích khi tính skill gap.
+              </span>
             </label>
 
             {error && (
