@@ -92,6 +92,8 @@ Respond ONLY with this JSON (no markdown fences):
   "targetRole": "...",
   "targetLevel": "...",
   "skillGap": {
+    "targetRole": "...",
+    "currentLevel": "...",
     "gapSkills": [...],
     "matchedSkills": [...],
     "overallGapScore": 0-100,
@@ -125,6 +127,87 @@ Respond ONLY with this JSON (no markdown fences):
   }
 }
 `.trim();
+}
+
+export function normalizeRoadmapResponse(
+  value: unknown,
+  input: CareerAnalyzeInput,
+  fallback?: { missingSkills?: unknown }
+): unknown {
+  if (typeof value !== "object" || value === null) return value;
+
+  const response = value as Record<string, unknown>;
+  const skillGap =
+    typeof response.skillGap === "object" && response.skillGap !== null
+      ? { ...(response.skillGap as Record<string, unknown>) }
+      : {};
+
+  const rawGapSkills =
+    Array.isArray(skillGap.gapSkills) && skillGap.gapSkills.length > 0
+      ? skillGap.gapSkills
+      : Array.isArray(fallback?.missingSkills)
+        ? fallback.missingSkills
+        : [];
+  const gapSkills = Array.isArray(rawGapSkills)
+    ? rawGapSkills.map((item) =>
+        typeof item === "string"
+          ? {
+              skill: item,
+              category: "technical",
+              importance: "must-have",
+              suggestedResources: [],
+            }
+          : item
+      )
+    : [];
+  const roadmap =
+    typeof response.roadmap === "object" && response.roadmap !== null
+      ? response.roadmap
+      : {
+      phases: Array.isArray(response.phases) ? response.phases : [],
+      estimatedMonths: response.estimatedMonths,
+      totalEstimatedDays: response.totalEstimatedDays,
+    };
+
+  return {
+    ...response,
+    roadmap,
+    targetRole:
+      typeof response.targetRole === "string"
+        ? response.targetRole
+        : input.targetRole,
+    targetLevel:
+      typeof response.targetLevel === "string"
+        ? response.targetLevel
+        : input.currentLevel,
+    skillGap: {
+      ...skillGap,
+      targetRole:
+        typeof skillGap.targetRole === "string"
+          ? skillGap.targetRole
+          : typeof response.targetRole === "string"
+            ? response.targetRole
+            : input.targetRole,
+      currentLevel:
+        typeof skillGap.currentLevel === "string"
+          ? skillGap.currentLevel
+          : typeof response.targetLevel === "string"
+            ? response.targetLevel
+            : input.currentLevel,
+      gapSkills,
+      matchedSkills: Array.isArray(skillGap.matchedSkills)
+        ? skillGap.matchedSkills
+        : [],
+      overallGapScore:
+        typeof skillGap.overallGapScore === "number"
+          ? skillGap.overallGapScore
+          : 0,
+      gapSummary:
+        typeof skillGap.gapSummary === "string"
+          ? skillGap.gapSummary
+          : "Lộ trình này chưa lưu phần tóm tắt skill gap.",
+    },
+  };
 }
 
 // ─── Core logic ────────────────────────────────────────────────────────────────
@@ -218,8 +301,9 @@ export async function generateRoadmap(
   }
 
   try {
+    const rawResponse = JSON.parse(stripJsonFence(raw));
     const parsed_2 = CareerAnalyzeResultSchema.safeParse(
-      JSON.parse(stripJsonFence(raw))
+      normalizeRoadmapResponse(rawResponse, parsed.data)
     );
     if (!parsed_2.success) {
       console.error("[career/roadmap] Schema errors:", parsed_2.error.flatten());
