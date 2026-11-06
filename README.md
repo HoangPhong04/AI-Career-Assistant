@@ -92,6 +92,7 @@ npm install
    ```
 
    Nếu `.env` đã tồn tại, không chạy lệnh trên vì sẽ ghi đè cấu hình riêng của bạn.
+
 2. Sửa `DATABASE_URL` theo tài khoản PostgreSQL trên máy. Tạo `AUTH_SECRET` ngẫu nhiên dài ít nhất 32 ký tự bằng:
 
    ```powershell
@@ -109,6 +110,7 @@ npm install
    ```
 
    Kết quả kiểm tra thành công là `Database connection: OK`.
+
 5. Khởi động ứng dụng và mở [http://localhost:3000](http://localhost:3000):
 
    ```powershell
@@ -564,4 +566,29 @@ Khi deploy cần cấu hình Environment Variables trên hosting thay vì commit
 - [ ] Interview Session
 - [ ] AI Interview Evaluation
 - [ ] Testing
-- [ ] Deployment
+- [ ] ## Deployment
+
+# AI‑Career‑Assistant – Docker Deploy
+
+    ## 1️⃣ Prepare environment
+    ```bash
+    cp .env.example .env
+    # edit .env – fill GEMINI_API_KEY, AUTH_SECRET, etc.
+
+## 2️⃣ Build & run
+
+    docker compose up -d          # builds app, starts postgres & minio
+    docker compose run --rm app npx prisma migrate deploy   # apply DB schema
+    # (optional) seed data
+    docker compose run --rm app npm run db:seed
+
+## 3️⃣ Open the UI
+
+Visit http://localhost:3000
+
+## 4️⃣ Stop & clean
+
+    docker compose down -v
+
+
+    ---

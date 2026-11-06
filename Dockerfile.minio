@@ -1,0 +1,13 @@
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates
+
+COPY minio-src/minio /usr/local/bin/minio
+
+EXPOSE 9000 9001
+
+VOLUME ["/data"]
+
+ENTRYPOINT ["/usr/local/bin/minio"]
+
+CMD ["server", "/data", "--console-address", ":9001"]

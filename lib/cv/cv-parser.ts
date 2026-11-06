@@ -1,5 +1,5 @@
 import mammoth from "mammoth";
-import fs from "node:fs/promises";
+import { getFileBufferFromS3 } from "@/lib/storage/s3";
 import { pathToFileURL } from "node:url";
 import path from "path";
 import { PDFParse } from "pdf-parse";
@@ -25,20 +25,20 @@ export function normalizeCVText(text: string): string {
     .trim();
 }
 
-export async function extractTextFormFile(relativeOrAbsolutePath: string) {
-  const absolutePath = path.isAbsolute(relativeOrAbsolutePath)
-    ? relativeOrAbsolutePath
-    : path.join(process.cwd(), relativeOrAbsolutePath);
+export async function extractTextFormFile(key: string) {
+  // key is the S3 object key (e.g., "cvs/uuid.pdf").
+  // Attempt to retrieve the file from S3. If it does not exist, throw FILE_NOT_FOUND.
+  let buffer: Buffer;
   try {
-    await fs.access(absolutePath);
-  } catch {
+    buffer = await getFileBufferFromS3(key);
+  } catch (err) {
+    // The AWS SDK throws a generic error; map it to our CVParserError.
     throw new CVParserError(
-      "CV file does not exist on disk.",
+      "CV file does not exist in S3 storage.",
       "FILE_NOT_FOUND"
     );
   }
-  const buffer = await fs.readFile(absolutePath);
-  const ext = path.extname(absolutePath).toLocaleLowerCase();
+  const ext = path.extname(key).toLocaleLowerCase();
   let rawText = "";
   try {
     if (ext === ".pdf") {

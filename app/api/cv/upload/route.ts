@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
-import { deleteCVFile, saveCVFile } from "@/lib/cv/cv-storage";
+import { saveCVFile } from "@/lib/cv/cv-storage";
 import { validateCVFile } from "@/lib/cv/validate-cv-file";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/utils";
@@ -12,8 +12,6 @@ export async function POST(request: Request) {
   if (!currentUser) {
     return apiError(401, "UNAUTHENTICATED", "Vui lòng đăng nhập để tiếp tục.");
   }
-
-  let savedFilePath: string | null = null;
 
   try {
     const formData = await request.formData();
@@ -60,7 +58,6 @@ export async function POST(request: Request) {
 
     // 3. Lưu file vào ổ đĩa vật lý
     const savedFile = await saveCVFile(file, validation.extension);
-    savedFilePath = savedFile.absolutePath;
 
     // 4. Tạo bản ghi trạng thái UPLOADED
     const cv = await prisma.cV.create({
@@ -82,7 +79,6 @@ export async function POST(request: Request) {
       },
     });
 
-    savedFilePath = null; // Thành công, không cần dọn dẹp
     return NextResponse.json(
       { message: "CV uploaded successfully.", data: cv },
       { status: 201 }
@@ -91,13 +87,13 @@ export async function POST(request: Request) {
     console.error("CV upload error:", error);
 
     // Luôn dọn dẹp file thừa nếu gặp lỗi bất ngờ
-    if (savedFilePath) {
-      try {
-        await deleteCVFile(savedFilePath);
-      } catch (cleanupError) {
-        console.error("Failed to cleanup file:", cleanupError);
-      }
-    }
+    // if (savedFilePath) {
+    //   try {
+    //     await deleteCVFile(savedFilePath);
+    //   } catch (cleanupError) {
+    //     console.error("Failed to cleanup file:", cleanupError);
+    //   }
+    // }
 
     return NextResponse.json(
       {
