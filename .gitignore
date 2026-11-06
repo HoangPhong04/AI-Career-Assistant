@@ -161,3 +161,7 @@ uploads/*
 !uploads/.gitkeep
 
 docs/timeline.md
+
+# Docker image archives
+*.tar
+*.tar.gz
