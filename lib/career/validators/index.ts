@@ -26,6 +26,7 @@ export const CareerAnalyzeInputSchema = z.object({
     .optional(),
   /** Optional CV text for AI to extract skills if currentSkills is absent. */
   cvText: z.string().optional(),
+  cvId: z.uuid().optional(),
 });
 export type CareerAnalyzeInput = z.infer<typeof CareerAnalyzeInputSchema>;
 
