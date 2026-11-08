@@ -16,12 +16,21 @@ export class AIAnalysisError extends Error {
     this.name = "AIAnalysisError";
   }
 }
-const aiClient = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY || "",
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  maxRetries: 3,
-  timeout: 45000,
-});
+function getAIClient(): OpenAI {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new AIAnalysisError(
+      "GEMINI_API_KEY is not configured in the environment.",
+      "API_KEY_MISSING"
+    );
+  }
+  return new OpenAI({
+    apiKey,
+    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    maxRetries: 3,
+    timeout: 45000,
+  });
+}
 
 const CV_ANALYSIS_SYSTEM_PROMPT = `
     You are an expert HR Specialist and Technical Recruiter.
@@ -88,6 +97,7 @@ export async function analyzeCVWithAI(
   }
   let rawResponse = "";
   try {
+    const aiClient = getAIClient();
     const res = await aiClient.chat.completions.create({
       model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
       messages: [
