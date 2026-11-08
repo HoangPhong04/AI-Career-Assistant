@@ -7,6 +7,16 @@ export function apiError(status: number, code: string, message: string) {
 	);
 }
 
+export function apiSuccess<T>(
+	data: T,
+	init?: ResponseInit | number,
+) {
+	return NextResponse.json(
+		{ data },
+		typeof init === "number" ? { status: init } : init,
+	);
+}
+
 export function isUniqueConstraintError(error: unknown) {
 	return (
 		typeof error === "object" &&

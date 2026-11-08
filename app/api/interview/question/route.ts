@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { apiError } from "@/lib/utils";
+import { apiError, apiSuccess } from "@/lib/utils";
 import {
   InterviewSessionIdSchema,
   SubmitInterviewAnswerSchema,
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   if (!session)
     return apiError(404, "SESSION_NOT_FOUND", "Interview session not found.");
 
-  return NextResponse.json({ session });
+  return apiSuccess({ session });
 }
 
 export async function POST(request: NextRequest) {
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       return apiError(409, "ANSWER_ALREADY_SUBMITTED", "This answer has already been submitted.");
     }
 
-    return NextResponse.json({ session: updated.session });
+    return apiSuccess({ session: updated.session });
   } catch (error) {
     if (
       typeof error === "object" &&

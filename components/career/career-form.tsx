@@ -97,7 +97,6 @@ export function CareerForm() {
   const [error, setError] = useState("");
   const [skillGapResult, setSkillGapResult] = useState<AnalyzeResponse["skillGap"] | null>(null);
   const [roadmapResult, setRoadmapResult] = useState<RoadmapResponse | null>(null);
-
   useEffect(() => {
     async function loadCVOptions() {
       try {
@@ -141,16 +140,17 @@ export function CareerForm() {
           targetRole,
           currentLevel,
           currentSkills: selectedSkills(),
+          cvId: selectedCvId || undefined,
         }),
       });
 
-      const data: AnalyzeResponse = await res.json();
+      const responseBody = (await res.json()) as { data?: AnalyzeResponse };
       if (!res.ok) {
-        setError(readError(data) ?? "Phân tích thất bại.");
+        setError(readError(responseBody) ?? "Phân tích thất bại.");
         return;
       }
 
-      setSkillGapResult(data.skillGap);
+      setSkillGapResult(responseBody.data?.skillGap ?? null);
       setView("gap");
     } catch {
       setError("Không thể kết nối máy chủ.");
@@ -174,16 +174,21 @@ export function CareerForm() {
           targetRole,
           currentLevel,
           currentSkills: selectedSkills(),
+          cvId: selectedCvId || undefined,
         }),
       });
 
-      const data: RoadmapResponse = await res.json();
+      const responseBody = (await res.json()) as { data?: RoadmapResponse };
       if (!res.ok) {
-        setError(readError(data) ?? "Tạo lộ trình thất bại.");
+        setError(readError(responseBody) ?? "Tạo lộ trình thất bại.");
         return;
       }
 
-      setRoadmapResult(data);
+      if (!responseBody.data) {
+        setError("Máy chủ không trả về lộ trình.");
+        return;
+      }
+      setRoadmapResult(responseBody.data);
       setView("roadmap");
       // Refresh the server component so the saved-roadmap sidebar updates.
       router.refresh();
@@ -210,6 +215,11 @@ export function CareerForm() {
           </div>
 
           <form className="mt-6 space-y-5" onSubmit={handleAnalyze}>
+            <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              {selectedCvId
+                ? "Kỹ năng sẽ được lấy từ CV đã phân tích gần nhất."
+                : "Chưa có CV đã phân tích. Bạn có thể tải CV lên trước để kết quả chính xác hơn."}
+            </p>
             <label className="block text-sm font-medium text-neutral-800">
               Vai trò mục tiêu
               <input

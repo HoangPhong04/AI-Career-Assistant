@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { apiError } from "@/lib/utils";
+import { apiError, apiSuccess } from "@/lib/utils";
 import {
   AIAnalysisError,
 } from "@/lib/ai";
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     });
     if (!session)
       return apiError(404, "SESSION_NOT_FOUND", "Interview session not found.");
-    return NextResponse.json({ session });
+    return apiSuccess({ session });
   }
 
   const sessions = await prisma.interviewSession.findMany({
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "desc" },
     take: 10,
   });
-  return NextResponse.json({ sessions });
+  return apiSuccess({ sessions });
 }
 
 export async function POST(request: NextRequest) {
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       include: interviewSessionInclude,
     });
 
-    return NextResponse.json({ session }, { status: 201 });
+    return apiSuccess({ session }, 201);
   } catch (error) {
     if (error instanceof AIAnalysisError) return aiErrorResponse(error);
     console.error("[interview/session] Failed to create interview session:", error);
