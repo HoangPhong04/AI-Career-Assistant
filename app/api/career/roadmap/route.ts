@@ -18,6 +18,7 @@ import {
 import { RoadmapStepUpdateSchema } from "@/lib/career/validators";
 import { NextRequest } from "next/server";
 import type { CareerAnalyzeInput } from "@/lib/career";
+import { belongsToUser } from "@/lib/access-control";
 
 // ─── POST — Generate and save roadmap ──────────────────────────────────────────
 
@@ -189,7 +190,7 @@ export async function PATCH(req: NextRequest) {
     include: { roadmap: { select: { userId: true } } },
   });
 
-  if (!step || step.roadmap.userId !== user.id) {
+  if (!step || !belongsToUser(step.roadmap, user.id)) {
     return apiError(404, "NOT_FOUND", "Step not found.");
   }
 
