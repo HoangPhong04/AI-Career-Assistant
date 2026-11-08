@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 import { Prisma } from "@/app/generated/prisma";
 import { AIAnalysisError, analyzeCVWithAI } from "@/lib/ai/cv-analyzer";
 import { getCurrentUser } from "@/lib/auth";

@@ -1,8 +1,10 @@
-import mammoth from "mammoth";
+import "@/lib/polyfills/dommatrix";
 import { getFileBufferFromS3 } from "@/lib/storage/s3";
+import mammoth from "mammoth";
 import { pathToFileURL } from "node:url";
 import path from "path";
 import { PDFParse } from "pdf-parse";
+import { CanvasFactory } from "pdf-parse/worker";
 export type CVParserErrorCode =
   | "FILE_NOT_FOUND"
   | "UNSUPPORTED_FORMAT"
@@ -52,12 +54,20 @@ export async function extractTextFormFile(key: string) {
           "pdf.worker.mjs"
         )
       ).href;
+
       PDFParse.setWorker(workerPath);
 
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      rawText = result.text;
-      await parser.destroy();
+      const parser = new PDFParse({
+        data: new Uint8Array(buffer),
+        CanvasFactory,
+      });
+
+      try {
+        const result = await parser.getText();
+        rawText = result.text;
+      } finally {
+        await parser.destroy();
+      }
     } else if (ext === ".docx") {
       const result = await mammoth.extractRawText({ buffer });
       rawText = result.value;
