@@ -23,7 +23,7 @@ type InterviewSession = {
 };
 
 type ApiError = { error?: { message?: string } };
-type SessionResponse = { session: InterviewSession };
+type SessionResponse = { data?: { session: InterviewSession } };
 
 const LEVELS = ["fresher", "junior", "mid", "senior"] as const;
 const TYPES = [
@@ -66,12 +66,13 @@ export function InterviewSimulator() {
         const response = await fetch("/api/interview/session");
         if (!response.ok) throw new Error(await readError(response));
         const body = (await response.json()) as {
-          sessions: InterviewSession[];
+          data?: { sessions: InterviewSession[] };
         };
         if (!active) return;
-        setSessions(body.sessions);
+        const sessions = body.data?.sessions ?? [];
+        setSessions(sessions);
         setSession(
-          body.sessions.find((item) => item.status !== "COMPLETED") ?? null
+          sessions.find((item) => item.status !== "COMPLETED") ?? null
         );
       } catch (loadError) {
         if (active) {
@@ -117,10 +118,12 @@ export function InterviewSimulator() {
       if (!response.ok) throw new Error(await readError(response));
 
       const body = (await response.json()) as SessionResponse;
-      setSession(body.session);
+      if (!body.data?.session) throw new Error("Máy chủ không trả về buổi phỏng vấn.");
+      const createdSession = body.data.session;
+      setSession(createdSession);
       setSessions((current) => [
-        body.session,
-        ...current.filter((item) => item.id !== body.session.id),
+        createdSession,
+        ...current.filter((item) => item.id !== createdSession.id),
       ]);
       setAnswer("");
     } catch (createError) {
@@ -149,14 +152,16 @@ export function InterviewSimulator() {
       if (!response.ok) throw new Error(await readError(response));
 
       const body = (await response.json()) as {
-        evaluation: { feedback: string; score: number | string };
+        data?: { evaluation: { feedback: string; score: number | string } };
       };
+      const evaluation = body.data?.evaluation;
+      if (!evaluation) throw new Error("Máy chủ không trả về kết quả đánh giá.");
       const updateQuestion = (item: InterviewQuestion) =>
         item.id === questionId
           ? {
               ...item,
-              aiFeedback: body.evaluation.feedback,
-              score: body.evaluation.score,
+              aiFeedback: evaluation.feedback,
+              score: evaluation.score,
             }
           : item;
       setSession((current) =>
@@ -200,12 +205,13 @@ export function InterviewSimulator() {
       if (!response.ok) throw new Error(await readError(response));
 
       const body = (await response.json()) as SessionResponse;
-      setSession(body.session);
+      if (!body.data?.session) throw new Error("Máy chủ không trả về buổi phỏng vấn.");
+      setSession(body.data.session);
       setSessions((current) =>
-        current.map((item) => (item.id === body.session.id ? body.session : item))
+        current.map((item) => (item.id === body.data!.session.id ? body.data!.session : item))
       );
       setAnswer("");
-      await evaluateAnswer(body.session.id, currentQuestion.id);
+      await evaluateAnswer(body.data.session.id, currentQuestion.id);
     } catch (submissionError) {
       setError(
         submissionError instanceof Error
