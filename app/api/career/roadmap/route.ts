@@ -7,23 +7,24 @@
  * Query params (optional):
  *   cvId=<uuid>   — link the roadmap to a specific analyzed CV
  */
-import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/app/generated/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { apiError } from "@/lib/utils";
+import { apiError, apiSuccess } from "@/lib/utils";
 import {
   generateRoadmap,
   CareerAnalyzeInputSchema,
 } from "@/lib/career";
 import { RoadmapStepUpdateSchema } from "@/lib/career/validators";
+import { NextRequest } from "next/server";
+import type { CareerAnalyzeInput } from "@/lib/career";
 
 // ─── POST — Generate and save roadmap ──────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   // 1. Auth
   const user = await getCurrentUser();
-  if (!user) return apiError(401, "UNAUTHORIZED", "Please sign in to continue.");
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue.");
 
   // 2. Parse body
   let body: unknown;
@@ -38,19 +39,34 @@ export async function POST(req: NextRequest) {
     return apiError(422, "VALIDATION_ERROR", parsed.error.message);
   }
 
-  const input = parsed.data;
-  const { searchParams } = new URL(req.url);
-  const cvId = searchParams.get("cvId") ?? undefined;
-
-  // 3. Validate cvId if provided
-  if (cvId) {
-    const cv = await prisma.cV.findFirst({
-      where: { id: cvId, userId: user.id },
-      select: { id: true },
-    });
-    if (!cv) {
-      return apiError(404, "CV_NOT_FOUND", "CV not found or does not belong to you.");
-    }
+  const requestedCvId = parsed.data.cvId;
+  let input: CareerAnalyzeInput = parsed.data;
+  let cvId = requestedCvId;
+  const cv = requestedCvId
+    ? await prisma.cV.findFirst({
+        where: { id: requestedCvId, userId: user.id, status: "ANALYZED" },
+        select: { id: true, extractedText: true, analysisJson: true },
+      })
+    : await prisma.cV.findFirst({
+        where: { userId: user.id, status: "ANALYZED" },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, extractedText: true, analysisJson: true },
+      });
+  if (requestedCvId && !cv)
+    return apiError(404, "CV_NOT_FOUND", "Analyzed CV not found or does not belong to you.");
+  if (cv) {
+    cvId = cv.id;
+    const analysis = cv.analysisJson as {
+      skills?: { technical?: string[]; soft?: string[] };
+    } | null;
+    input = {
+      ...input,
+      currentSkills: input.currentSkills ?? {
+        technical: analysis?.skills?.technical ?? [],
+        soft: analysis?.skills?.soft ?? [],
+      },
+      cvText: input.cvText ?? cv.extractedText ?? undefined,
+    };
   }
 
   // 4. Generate roadmap via AI
@@ -101,9 +117,9 @@ export async function POST(req: NextRequest) {
     return apiError(500, "DB_ERROR", "Failed to save roadmap to database.");
   }
 
-  return NextResponse.json(
+  return apiSuccess(
     { roadmapId, stepIds, ...result },
-    { status: 201 }
+    201
   );
 }
 
@@ -111,7 +127,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
-  if (!user) return apiError(401, "UNAUTHORIZED", "Please sign in to continue.");
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue.");
 
   const { searchParams } = new URL(req.url);
   const roadmapId = searchParams.get("id");
@@ -127,7 +143,7 @@ export async function GET(req: NextRequest) {
       return apiError(404, "NOT_FOUND", "Roadmap not found.");
     }
 
-    return NextResponse.json({ roadmap }, { status: 200 });
+    return apiSuccess({ roadmap });
   }
 
   // List all roadmaps for the current user
@@ -144,14 +160,14 @@ export async function GET(req: NextRequest) {
     orderBy: { updatedAt: "desc" },
   });
 
-  return NextResponse.json({ roadmaps }, { status: 200 });
+  return apiSuccess({ roadmaps });
 }
 
 // ─── PATCH — Update roadmap step progress ────────────────────────────────────
 
 export async function PATCH(req: NextRequest) {
   const user = await getCurrentUser();
-  if (!user) return apiError(401, "UNAUTHORIZED", "Please sign in to continue.");
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue.");
 
   let body: unknown;
   try {
@@ -182,5 +198,5 @@ export async function PATCH(req: NextRequest) {
     data: { status, description: notes ?? step.description },
   });
 
-  return NextResponse.json({ step: updated }, { status: 200 });
+  return apiSuccess({ step: updated });
 }

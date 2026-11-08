@@ -3,7 +3,7 @@ import { AIAnalysisError, analyzeCVWithAI } from "@/lib/ai/cv-analyzer";
 import { getCurrentUser } from "@/lib/auth";
 import { CVParserError, extractTextFormFile } from "@/lib/cv/cv-parser";
 import { prisma } from "@/lib/prisma";
-import { apiError } from "@/lib/utils";
+import { apiError, apiSuccess } from "@/lib/utils";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -40,9 +40,7 @@ export async function GET(request: Request) {
     }
 
     // Trả dữ liệu về cho component hiển thị
-    return NextResponse.json({
-      data: cv,
-    });
+    return apiSuccess(cv);
   } catch (error: unknown) {
     console.error("GET CV error:", error);
     return apiError(500, "INTERNAL_ERROR", "Failed to retrieve CV data.");
@@ -60,38 +58,29 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     cvId = body.cvId;
     if (!cvId) {
-      return NextResponse.json(
-        { message: "Missing required field 'cvId'.", code: "INVALID_REQUEST" },
-        { status: 400 }
-      );
+      return apiError(400, "INVALID_REQUEST", "Missing required field 'cvId'.");
     }
     const cv = await prisma.cV.findFirst({
       where: { id: cvId, userId: currentUser.id },
     });
     if (!cv) {
-      return NextResponse.json(
-        { message: "CV not found with the provided ID.", code: "CV_NOT_FOUND" },
-        { status: 404 }
-      );
+      return apiError(404, "CV_NOT_FOUND", "CV not found or does not belong to you.");
     }
     let cleanText = "";
     try {
       cleanText = await extractTextFormFile(cv.filePath);
     } catch (parseError) {
-      await prisma.cV.update({
-        where: { id: cvId },
+      await prisma.cV.updateMany({
+        where: { id: cvId, userId: currentUser.id },
         data: { status: "FAILED" },
       });
       if (parseError instanceof CVParserError) {
-        return NextResponse.json(
-          { message: parseError.message, code: parseError.code },
-          { status: 422 }
-        );
+        return apiError(422, parseError.code, parseError.message);
       }
       throw parseError;
     }
-    await prisma.cV.update({
-      where: { id: cvId },
+    await prisma.cV.updateMany({
+      where: { id: cvId, userId: currentUser.id },
       data: {
         extractedText: cleanText,
         status: "PARSED",
@@ -101,25 +90,25 @@ export async function POST(request: Request) {
     try {
       analysisResult = await analyzeCVWithAI(cleanText);
     } catch (aiError) {
-      await prisma.cV.update({
-        where: { id: cvId },
+      await prisma.cV.updateMany({
+        where: { id: cvId, userId: currentUser.id },
         data: { status: "FAILED" },
       });
       if (aiError instanceof AIAnalysisError) {
-        return NextResponse.json(
-          { message: aiError.message, code: aiError.code },
-          { status: 502 }
-        );
+        return apiError(502, aiError.code, aiError.message);
       }
       throw aiError;
     }
-    const updatedCV = await prisma.cV.update({
-      where: { id: cvId },
+    await prisma.cV.updateMany({
+      where: { id: cvId, userId: currentUser.id },
       data: {
         analysisJson: analysisResult as Prisma.InputJsonValue,
         score: analysisResult.score,
         status: "ANALYZED",
       },
+    });
+    const updatedCV = await prisma.cV.findFirst({
+      where: { id: cvId, userId: currentUser.id },
       select: {
         id: true,
         originalName: true,
@@ -130,6 +119,8 @@ export async function POST(request: Request) {
         updatedAt: true,
       },
     });
+    if (!updatedCV)
+      return apiError(404, "CV_NOT_FOUND", "CV not found or does not belong to you.");
     const allSkillNames = [
       ...analysisResult.skills.technical,
       ...analysisResult.skills.soft,
@@ -157,28 +148,23 @@ export async function POST(request: Request) {
         })
         .catch(() => null); // Bỏ qua nếu đã tồn tại
     }
-    return NextResponse.json({
-      message: "CV parsed and analyzed successfully.",
-      data: updatedCV,
-    });
+    return apiSuccess(updatedCV);
   } catch (error: unknown) {
     console.error("CV analyze pipeline error:", error);
 
     if (cvId) {
       await prisma.cV
-        .update({
-          where: { id: cvId },
+        .updateMany({
+          where: { id: cvId, userId: currentUser.id },
           data: { status: "FAILED" },
         })
         .catch(() => null);
     }
 
-    return NextResponse.json(
-      {
-        message: "An unexpected error occurred during CV analysis.",
-        error: (error as Error).message,
-      },
-      { status: 500 }
+    return apiError(
+      500,
+      "INTERNAL_ERROR",
+      "An unexpected error occurred during CV analysis."
     );
   }
 }

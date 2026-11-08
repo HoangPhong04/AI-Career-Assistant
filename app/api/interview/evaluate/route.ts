@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { apiError } from "@/lib/utils";
+import { apiError, apiSuccess } from "@/lib/utils";
 import { AIAnalysisError } from "@/lib/ai";
 import {
   evaluateInterviewAnswer,
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   if (!question.userAnswer)
     return apiError(409, "ANSWER_REQUIRED", "Submit an answer before requesting feedback.");
   if (question.aiFeedback !== null && question.score !== null) {
-    return NextResponse.json({
+    return apiSuccess({
       evaluation: {
         feedback: question.aiFeedback,
         score: question.score,
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     if (result.count !== 1)
       return apiError(409, "ANSWER_CHANGED", "The answer changed; reload and try again.");
 
-    return NextResponse.json({ evaluation });
+    return apiSuccess({ evaluation });
   } catch (error) {
     if (error instanceof AIAnalysisError) {
       const status = error.code === "API_KEY_MISSING" ? 503 : 502;

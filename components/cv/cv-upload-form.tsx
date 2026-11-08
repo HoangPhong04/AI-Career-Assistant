@@ -238,7 +238,7 @@ export function CVUploadForm() {
 
       const uploadJson = await uploadRes.json();
       if (!uploadRes.ok) {
-        throw new Error(uploadJson.message || "Tải file lên thất bại.");
+        throw new Error(uploadJson.error?.message || "Tải file lên thất bại.");
       }
 
       const cvId = uploadJson.data?.id;
@@ -257,11 +257,11 @@ export function CVUploadForm() {
 
       const analyzeJson = await analyzeRes.json();
       if (!analyzeRes.ok) {
-        let message = analyzeJson.message || "Phân tích CV thất bại.";
-        if (analyzeJson.code === "EMPTY_TEXT") {
+        let message = analyzeJson.error?.message || analyzeJson.message || "Phân tích CV thất bại.";
+        if (analyzeJson.error?.code === "EMPTY_TEXT") {
           message =
             "CV dạng scan hình ảnh không có lớp chữ để đọc. Vui lòng tải bản PDF/Word gốc.";
-        } else if (analyzeJson.code === "AI_REQUEST_FAILED") {
+        } else if (analyzeJson.error?.code === "AI_REQUEST_FAILED") {
           message =
             "Hệ thống AI tạm thời bận. Vui lòng thử lại sau giây lát.";
         }
