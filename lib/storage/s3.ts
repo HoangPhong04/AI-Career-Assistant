@@ -12,7 +12,12 @@ const accessKeyId = process.env.S3_ACCESS_KEY_ID!;
 const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY!;
 const forcePathStyle = process.env.S3_FORCE_PATH_STYLE === "true";
 
-export const s3BucketName = process.env.S3_BUCKET_NAME || "ai-career-assistant";
+export const s3BucketName = process.env.S3_BUCKET_NAME;
+if (!endpoint || !accessKeyId || !secretAccessKey || !s3BucketName) {
+  throw new Error(
+    "Missing S3 configuration. Check S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and S3_BUCKET_NAME."
+  );
+}
 
 export const s3Client = new S3Client({
   region,
@@ -21,7 +26,7 @@ export const s3Client = new S3Client({
     accessKeyId,
     secretAccessKey,
   },
-  forcePathStyle, // Cần thiết khi kết nối MinIO
+  forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
 });
 
 /**
