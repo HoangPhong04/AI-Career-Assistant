@@ -11,6 +11,8 @@ export class AIAnalysisError extends Error {
     message: string,
     public code:
       | "API_KEY_MISSING"
+      | "RATE_LIMITED"
+      | "AI_UNAVAILABLE"
       | "AI_REQUEST_FAILED"
       | "INVALID_RESPONSE_SCHEMA"
   ) {
@@ -42,11 +44,41 @@ function getAiClient(): OpenAI {
     _aiClient = new OpenAI({
       apiKey: process.env.GEMINI_API_KEY ?? "",
       baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-      maxRetries: 3,
+      maxRetries: 0,
       timeout: 45_000,
     });
   }
   return _aiClient;
+}
+
+export function normalizeAIRequestError(error: unknown): AIAnalysisError {
+  const message = error instanceof Error ? error.message : String(error);
+  const status =
+    typeof error === "object" && error !== null && "status" in error
+      ? error.status
+      : undefined;
+
+  if (
+    status === 429 ||
+    /\bRESOURCE_EXHAUSTED\b|quota exceeded|rate limit/i.test(message)
+  ) {
+    return new AIAnalysisError(
+      "Hạn mức sử dụng Gemini đã đạt giới hạn. Hãy kiểm tra hạn mức và gói thanh toán, hoặc đợi đến khi hạn mức được đặt lại rồi thử lại.",
+      "RATE_LIMITED"
+    );
+  }
+
+  if (
+    status === 503 ||
+    /\bUNAVAILABLE\b|high demand|temporarily unavailable/i.test(message)
+  ) {
+    return new AIAnalysisError(
+      "Dịch vụ Gemini hiện đang quá tải hoặc tạm thời không khả dụng. Vui lòng đợi một lúc rồi thử lại.",
+      "AI_UNAVAILABLE"
+    );
+  }
+
+  return new AIAnalysisError(`AI request failed: ${message}`, "AI_REQUEST_FAILED");
 }
 
 /**
@@ -89,11 +121,7 @@ export async function aiChatCompletion({
 
     return res.choices[0]?.message?.content ?? "";
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new AIAnalysisError(
-      `AI request failed: ${message}`,
-      "AI_REQUEST_FAILED"
-    );
+    throw normalizeAIRequestError(err);
   }
 }
 

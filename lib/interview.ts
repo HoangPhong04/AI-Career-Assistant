@@ -48,15 +48,33 @@ export type InterviewAnswerEvaluation = z.infer<
   typeof InterviewAnswerEvaluationSchema
 >;
 
+export function calculateInterviewOverallScore(
+  scores: Array<number | string | null>
+): number | null {
+  if (scores.length === 0 || scores.some((score) => score === null)) {
+    return null;
+  }
+
+  const numericScores = scores.map(Number);
+  if (numericScores.some((score) => !Number.isFinite(score))) {
+    return null;
+  }
+
+  const average =
+    numericScores.reduce((total, score) => total + score, 0) /
+    numericScores.length;
+  return Math.round(average * 100) / 100;
+}
+
 export function buildInterviewQuestionsPrompt(
   input: CreateInterviewSessionInput
 ): string {
   const questionTypes =
     input.type === "MIXED"
-      ? "a balanced mix of technical and behavioral"
+      ? "kết hợp cân bằng giữa câu hỏi kỹ thuật và tình huống hành vi"
       : input.type === "TECHNICAL"
-        ? "technical"
-        : "behavioral";
+        ? "kỹ thuật"
+        : "tình huống hành vi";
 
   return `
 Tạo đúng ${input.questionCount} câu hỏi phỏng vấn ${questionTypes} khác nhau
@@ -71,6 +89,33 @@ Chỉ trả về một đối tượng JSON theo cấu trúc sau:
     { "questionText": "Bạn sẽ thiết kế một API đáng tin cậy như thế nào?", "questionType": "TECHNICAL or BEHAVIORAL" }
   ]
 }
+`.trim();
+}
+
+export function buildInterviewAnswerPrompt(input: {
+  targetRole: string;
+  difficulty: string;
+  question: string;
+  questionType: string;
+  answer: string;
+}): string {
+  return `
+Đánh giá câu trả lời phỏng vấn cho vị trí "${input.targetRole}" ở cấp độ ${input.difficulty}.
+Dựa trên yêu cầu chuyên môn của vị trí, loại câu hỏi (${input.questionType}),
+câu hỏi được đưa ra và câu trả lời thực tế của ứng viên. Viết toàn bộ nhận xét
+bằng tiếng Việt tự nhiên. Không suy diễn hoặc ghi nhận thành tích không có trong câu trả lời.
+
+Câu hỏi: ${input.question}
+Câu trả lời của ứng viên: ${input.answer}
+
+Chỉ trả về đúng cấu trúc JSON sau:
+{
+  "score": 0,
+  "feedback": "Nhận xét tổng quan ngắn gọn, có thể áp dụng",
+  "strengths": ["Điểm mạnh cụ thể"],
+  "improvements": ["Bước cải thiện tiếp theo"]
+}
+Chấm điểm từ 0 đến 100.
 `.trim();
 }
 
@@ -110,49 +155,47 @@ export async function evaluateInterviewAnswer(input: {
   targetRole: string;
   difficulty: string;
   question: string;
+  questionType: string;
   answer: string;
 }): Promise<InterviewAnswerEvaluation> {
+  const userMessage = buildInterviewAnswerPrompt(input);
+  const responseFormatError =
+    "AI trả về kết quả đánh giá không đúng định dạng. Vui lòng thử lại.";
+  const parseEvaluation = (raw: string): InterviewAnswerEvaluation | null => {
+    try {
+      const parsed = InterviewAnswerEvaluationSchema.safeParse(
+        JSON.parse(stripJsonFence(raw))
+      );
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const systemPrompt =
+    "Bạn là chuyên gia huấn luyện phỏng vấn công bằng. Đánh giá câu trả lời dựa trên vị trí, cấp độ và nội dung câu hỏi; chỉ trả về JSON hợp lệ bằng tiếng Việt.";
   const raw = await aiInternals.chatCompletion({
-    systemPrompt:
-      "You are a fair interview coach. Evaluate only the candidate's answer against the question and role. Return only valid JSON.",
-    userMessage: `
-Evaluate this ${input.difficulty}-level interview answer for "${input.targetRole}".
-
-Question: ${input.question}
-Candidate answer: ${input.answer}
-
-Return exactly this JSON shape:
-{
-  "score": 0,
-  "feedback": "Short, actionable overall feedback",
-  "strengths": ["Specific strength"],
-  "improvements": ["Specific next step"]
-}
-Use a score from 0 to 100. Do not reward claims that are not supported by the answer.
-`.trim(),
+    systemPrompt,
+    userMessage,
     temperature: 0.2,
-    maxTokens: 1024,
+    maxTokens: 2048,
   });
+  const evaluation = parseEvaluation(raw);
+  if (evaluation) return evaluation;
 
-  let response: unknown;
-  try {
-    response = JSON.parse(stripJsonFence(raw));
-  } catch {
-    throw new AIAnalysisError(
-      "The AI returned invalid JSON while evaluating the answer.",
-      "INVALID_RESPONSE_SCHEMA"
-    );
-  }
+  const retriedRaw = await aiInternals.chatCompletion({
+    systemPrompt: `${systemPrompt} Đầu ra phải là một đối tượng JSON hợp lệ, không có văn bản hoặc Markdown bên ngoài JSON.`,
+    userMessage: `${userMessage}\n\nHãy kiểm tra kỹ cú pháp JSON và bảo đảm mọi chuỗi được escape hợp lệ.`,
+    temperature: 0,
+    maxTokens: 2048,
+  });
+  const retriedEvaluation = parseEvaluation(retriedRaw);
+  if (retriedEvaluation) return retriedEvaluation;
 
-  const parsed = InterviewAnswerEvaluationSchema.safeParse(response);
-  if (!parsed.success) {
-    throw new AIAnalysisError(
-      "The AI response did not match the interview feedback format.",
-      "INVALID_RESPONSE_SCHEMA"
-    );
-  }
-
-  return parsed.data;
+  throw new AIAnalysisError(
+    responseFormatError,
+    "INVALID_RESPONSE_SCHEMA"
+  );
 }
 
 export function formatInterviewFeedback(
@@ -161,10 +204,10 @@ export function formatInterviewFeedback(
   return [
     evaluation.feedback,
     evaluation.strengths.length
-      ? `Strengths: ${evaluation.strengths.join("; ")}`
+      ? `Điểm mạnh: ${evaluation.strengths.join("; ")}`
       : "",
     evaluation.improvements.length
-      ? `Areas to improve: ${evaluation.improvements.join("; ")}`
+      ? `Cần cải thiện: ${evaluation.improvements.join("; ")}`
       : "",
   ]
     .filter(Boolean)

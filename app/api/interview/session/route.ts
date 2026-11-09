@@ -27,6 +27,10 @@ const interviewSessionInclude = {
 };
 
 function aiErrorResponse(error: AIAnalysisError) {
+  if (error.code === "RATE_LIMITED")
+    return apiError(429, error.code, error.message);
+  if (error.code === "AI_UNAVAILABLE")
+    return apiError(503, error.code, error.message);
   const status = error.code === "API_KEY_MISSING" ? 503 : 502;
   return apiError(status, error.code, error.message);
 }
