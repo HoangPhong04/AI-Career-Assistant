@@ -59,13 +59,16 @@ export function buildInterviewQuestionsPrompt(
         : "behavioral";
 
   return `
-Create exactly ${input.questionCount} distinct ${questionTypes} interview questions
-for a ${input.difficulty}-level candidate applying for "${input.targetRole}".
-Do not include answers, hints, numbering, or markdown.
-Return only a JSON object matching this shape:
+Tạo đúng ${input.questionCount} câu hỏi phỏng vấn ${questionTypes} khác nhau
+cho ứng viên cấp độ ${input.difficulty} ứng tuyển vị trí "${input.targetRole}".
+Viết toàn bộ nội dung câu hỏi bằng tiếng Việt tự nhiên, bất kể tên vị trí hoặc
+thuật ngữ đầu vào dùng ngôn ngữ nào. Không viết câu hỏi bằng tiếng Anh; giữ
+nguyên tên công nghệ và thuật ngữ chuyên ngành phổ biến khi phù hợp.
+Không đưa câu trả lời, gợi ý, số thứ tự hoặc định dạng Markdown.
+Chỉ trả về một đối tượng JSON theo cấu trúc sau:
 {
   "questions": [
-    { "questionText": "A clear, role-specific question", "questionType": "TECHNICAL or BEHAVIORAL" }
+    { "questionText": "Bạn sẽ thiết kế một API đáng tin cậy như thế nào?", "questionType": "TECHNICAL or BEHAVIORAL" }
   ]
 }
 `.trim();
@@ -76,7 +79,7 @@ export async function generateInterviewQuestions(
 ): Promise<InterviewQuestion[]> {
   const raw = await aiInternals.chatCompletion({
     systemPrompt:
-      "You are an experienced interviewer. Return only valid JSON with concise, realistic interview questions.",
+      "Bạn là chuyên gia phỏng vấn giàu kinh nghiệm. Hãy viết mọi câu hỏi bằng tiếng Việt tự nhiên và chỉ trả về JSON hợp lệ với các câu hỏi ngắn gọn, thực tế.",
     userMessage: buildInterviewQuestionsPrompt(input),
     temperature: 0.5,
     maxTokens: 2048,
