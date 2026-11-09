@@ -1,8 +1,10 @@
+import "@/lib/polyfills/dommatrix";
+import { getFileBufferFromS3 } from "@/lib/storage/s3";
 import mammoth from "mammoth";
-import fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import path from "path";
 import { PDFParse } from "pdf-parse";
+import { CanvasFactory } from "pdf-parse/worker";
 export type CVParserErrorCode =
   | "FILE_NOT_FOUND"
   | "UNSUPPORTED_FORMAT"
@@ -25,20 +27,20 @@ export function normalizeCVText(text: string): string {
     .trim();
 }
 
-export async function extractTextFormFile(relativeOrAbsolutePath: string) {
-  const absolutePath = path.isAbsolute(relativeOrAbsolutePath)
-    ? relativeOrAbsolutePath
-    : path.join(process.cwd(), relativeOrAbsolutePath);
+export async function extractTextFormFile(key: string) {
+  // key is the S3 object key (e.g., "cvs/uuid.pdf").
+  // Attempt to retrieve the file from S3. If it does not exist, throw FILE_NOT_FOUND.
+  let buffer: Buffer;
   try {
-    await fs.access(absolutePath);
-  } catch {
+    buffer = await getFileBufferFromS3(key);
+  } catch (err) {
+    // The AWS SDK throws a generic error; map it to our CVParserError.
     throw new CVParserError(
-      "CV file does not exist on disk.",
+      "CV file does not exist in S3 storage.",
       "FILE_NOT_FOUND"
     );
   }
-  const buffer = await fs.readFile(absolutePath);
-  const ext = path.extname(absolutePath).toLocaleLowerCase();
+  const ext = path.extname(key).toLocaleLowerCase();
   let rawText = "";
   try {
     if (ext === ".pdf") {
@@ -52,12 +54,20 @@ export async function extractTextFormFile(relativeOrAbsolutePath: string) {
           "pdf.worker.mjs"
         )
       ).href;
+
       PDFParse.setWorker(workerPath);
 
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      rawText = result.text;
-      await parser.destroy();
+      const parser = new PDFParse({
+        data: new Uint8Array(buffer),
+        CanvasFactory,
+      });
+
+      try {
+        const result = await parser.getText();
+        rawText = result.text;
+      } finally {
+        await parser.destroy();
+      }
     } else if (ext === ".docx") {
       const result = await mammoth.extractRawText({ buffer });
       rawText = result.value;

@@ -1,0 +1,38 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+
+# Documentation
+*.md
+
+# Tests and build outputs
+coverage/
+dist/
+.next/
+out/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.tmp
+*.bak

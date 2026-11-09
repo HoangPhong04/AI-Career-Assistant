@@ -1,9 +1,10 @@
+export const runtime = "nodejs";
 import { Prisma } from "@/app/generated/prisma";
 import { AIAnalysisError, analyzeCVWithAI } from "@/lib/ai/cv-analyzer";
 import { getCurrentUser } from "@/lib/auth";
 import { CVParserError, extractTextFormFile } from "@/lib/cv/cv-parser";
 import { prisma } from "@/lib/prisma";
-import { apiError, apiSuccess } from "@/lib/utils";
+import { apiError } from "@/lib/utils";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -19,7 +20,6 @@ export async function GET(request: Request) {
       : { userId: user.id, status: "ANALYZED" };
     const cv = await prisma.cV.findFirst({
       where: whereCondition,
-
       orderBy: {
         createdAt: "desc",
       },
@@ -39,8 +39,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ data: null });
     }
 
-    // Trả dữ liệu về cho component hiển thị
-    return apiSuccess(cv);
+    return NextResponse.json({ data: cv });
   } catch (error: unknown) {
     console.error("GET CV error:", error);
     return apiError(500, "INTERNAL_ERROR", "Failed to retrieve CV data.");
@@ -58,57 +57,71 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     cvId = body.cvId;
     if (!cvId) {
-      return apiError(400, "INVALID_REQUEST", "Missing required field 'cvId'.");
+      return NextResponse.json(
+        { message: "Missing required field 'cvId'.", code: "INVALID_REQUEST" },
+        { status: 400 }
+      );
     }
+
     const cv = await prisma.cV.findFirst({
       where: { id: cvId, userId: currentUser.id },
     });
     if (!cv) {
-      return apiError(404, "CV_NOT_FOUND", "CV not found or does not belong to you.");
+      return NextResponse.json(
+        { message: "CV not found with the provided ID.", code: "CV_NOT_FOUND" },
+        { status: 404 }
+      );
     }
+
+    // ── Bước 1: Parse text từ S3 ─────────────────────────────────────────────
     let cleanText = "";
     try {
       cleanText = await extractTextFormFile(cv.filePath);
     } catch (parseError) {
-      await prisma.cV.updateMany({
-        where: { id: cvId, userId: currentUser.id },
+      await prisma.cV.update({
+        where: { id: cvId },
         data: { status: "FAILED" },
       });
       if (parseError instanceof CVParserError) {
-        return apiError(422, parseError.code, parseError.message);
+        return NextResponse.json(
+          { message: parseError.message, code: parseError.code },
+          { status: 422 }
+        );
       }
       throw parseError;
     }
-    await prisma.cV.updateMany({
-      where: { id: cvId, userId: currentUser.id },
-      data: {
-        extractedText: cleanText,
-        status: "PARSED",
-      },
+
+    await prisma.cV.update({
+      where: { id: cvId },
+      data: { extractedText: cleanText, status: "PARSED" },
     });
+
+    // ── Bước 2: Gọi AI phân tích ─────────────────────────────────────────────
     let analysisResult: Awaited<ReturnType<typeof analyzeCVWithAI>>;
     try {
       analysisResult = await analyzeCVWithAI(cleanText);
     } catch (aiError) {
-      await prisma.cV.updateMany({
-        where: { id: cvId, userId: currentUser.id },
+      await prisma.cV.update({
+        where: { id: cvId },
         data: { status: "FAILED" },
       });
       if (aiError instanceof AIAnalysisError) {
-        return apiError(502, aiError.code, aiError.message);
+        return NextResponse.json(
+          { message: aiError.message, code: aiError.code },
+          { status: 502 }
+        );
       }
       throw aiError;
     }
-    await prisma.cV.updateMany({
-      where: { id: cvId, userId: currentUser.id },
+
+    // ── Bước 3: Lưu kết quả phân tích ───────────────────────────────────────
+    const updatedCV = await prisma.cV.update({
+      where: { id: cvId },
       data: {
         analysisJson: analysisResult as Prisma.InputJsonValue,
         score: analysisResult.score,
         status: "ANALYZED",
       },
-    });
-    const updatedCV = await prisma.cV.findFirst({
-      where: { id: cvId, userId: currentUser.id },
       select: {
         id: true,
         originalName: true,
@@ -119,52 +132,67 @@ export async function POST(request: Request) {
         updatedAt: true,
       },
     });
-    if (!updatedCV)
-      return apiError(404, "CV_NOT_FOUND", "CV not found or does not belong to you.");
-    const allSkillNames = [
-      ...analysisResult.skills.technical,
-      ...analysisResult.skills.soft,
+
+    // ── Bước 4: Lưu Skills vào DB (batch transaction, có category) ───────────
+    // Gộp technical + soft kèm theo category tương ứng
+    const skillsWithCategory: { name: string; category: "technical" | "soft" }[] = [
+      ...analysisResult.skills.technical.map((name) => ({
+        name,
+        category: "technical" as const,
+      })),
+      ...analysisResult.skills.soft.map((name) => ({
+        name,
+        category: "soft" as const,
+      })),
     ];
 
-    for (const skillName of allSkillNames) {
-      // Tìm hoặc tạo skill trong bảng Skill
-      let skill = await prisma.skill.findFirst({
-        where: { name: { equals: skillName, mode: "insensitive" } },
+    if (skillsWithCategory.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        for (const { name: skillName, category } of skillsWithCategory) {
+          // Tìm skill theo tên (không phân biệt hoa thường)
+          let skill = await tx.skill.findFirst({
+            where: { name: { equals: skillName, mode: "insensitive" } },
+          });
+
+          // Nếu chưa có thì tạo mới — kèm category
+          if (!skill) {
+            skill = await tx.skill.create({
+              data: { name: skillName, category },
+            });
+          }
+
+          // Tạo liên kết CVSkill — bỏ qua nếu đã tồn tại (unique constraint)
+          await tx.cVSkill
+            .create({
+              data: { cvId: cv.id, skillId: skill.id },
+            })
+            .catch(() => null);
+        }
       });
-
-      if (!skill) {
-        skill = await prisma.skill.create({
-          data: { name: skillName },
-        });
-      }
-
-      // Tạo liên kết trong cv_skill
-      await prisma.cVSkill
-        .create({
-          data: {
-            cvId: cv.id,
-            skillId: skill.id,
-          },
-        })
-        .catch(() => null); // Bỏ qua nếu đã tồn tại
     }
-    return apiSuccess(updatedCV);
+
+    return NextResponse.json({
+      message: "CV parsed and analyzed successfully.",
+      data: updatedCV,
+    });
   } catch (error: unknown) {
     console.error("CV analyze pipeline error:", error);
 
     if (cvId) {
       await prisma.cV
-        .updateMany({
-          where: { id: cvId, userId: currentUser.id },
+        .update({
+          where: { id: cvId },
           data: { status: "FAILED" },
         })
         .catch(() => null);
     }
 
-    return apiError(
-      500,
-      "INTERNAL_ERROR",
-      "An unexpected error occurred during CV analysis."
+    return NextResponse.json(
+      {
+        message: "An unexpected error occurred during CV analysis.",
+        error: (error as Error).message,
+      },
+      { status: 500 }
     );
   }
 }
