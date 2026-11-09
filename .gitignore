@@ -164,4 +164,9 @@ uploads/*
 storage/cvs/*
 !storage/cvs/.gitkeep
 
-docs/timeline.md
+aca-images.tar
+*.tar
+
+docs/timeline.mdaca-images.tar
+*.tar
+storage/cvs/
