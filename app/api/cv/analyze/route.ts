@@ -20,7 +20,6 @@ export async function GET(request: Request) {
       : { userId: user.id, status: "ANALYZED" };
     const cv = await prisma.cV.findFirst({
       where: whereCondition,
-
       orderBy: {
         createdAt: "desc",
       },
@@ -40,10 +39,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ data: null });
     }
 
-    // Trả dữ liệu về cho component hiển thị
-    return NextResponse.json({
-      data: cv,
-    });
+    return NextResponse.json({ data: cv });
   } catch (error: unknown) {
     console.error("GET CV error:", error);
     return apiError(500, "INTERNAL_ERROR", "Failed to retrieve CV data.");
@@ -66,6 +62,7 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
     const cv = await prisma.cV.findFirst({
       where: { id: cvId, userId: currentUser.id },
     });
@@ -75,6 +72,8 @@ export async function POST(request: Request) {
         { status: 404 }
       );
     }
+
+    // ── Bước 1: Parse text từ S3 ─────────────────────────────────────────────
     let cleanText = "";
     try {
       cleanText = await extractTextFormFile(cv.filePath);
@@ -91,13 +90,13 @@ export async function POST(request: Request) {
       }
       throw parseError;
     }
+
     await prisma.cV.update({
       where: { id: cvId },
-      data: {
-        extractedText: cleanText,
-        status: "PARSED",
-      },
+      data: { extractedText: cleanText, status: "PARSED" },
     });
+
+    // ── Bước 2: Gọi AI phân tích ─────────────────────────────────────────────
     let analysisResult: Awaited<ReturnType<typeof analyzeCVWithAI>>;
     try {
       analysisResult = await analyzeCVWithAI(cleanText);
@@ -114,6 +113,8 @@ export async function POST(request: Request) {
       }
       throw aiError;
     }
+
+    // ── Bước 3: Lưu kết quả phân tích ───────────────────────────────────────
     const updatedCV = await prisma.cV.update({
       where: { id: cvId },
       data: {
@@ -131,33 +132,45 @@ export async function POST(request: Request) {
         updatedAt: true,
       },
     });
-    const allSkillNames = [
-      ...analysisResult.skills.technical,
-      ...analysisResult.skills.soft,
+
+    // ── Bước 4: Lưu Skills vào DB (batch transaction, có category) ───────────
+    // Gộp technical + soft kèm theo category tương ứng
+    const skillsWithCategory: { name: string; category: "technical" | "soft" }[] = [
+      ...analysisResult.skills.technical.map((name) => ({
+        name,
+        category: "technical" as const,
+      })),
+      ...analysisResult.skills.soft.map((name) => ({
+        name,
+        category: "soft" as const,
+      })),
     ];
 
-    for (const skillName of allSkillNames) {
-      // Tìm hoặc tạo skill trong bảng Skill
-      let skill = await prisma.skill.findFirst({
-        where: { name: { equals: skillName, mode: "insensitive" } },
+    if (skillsWithCategory.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        for (const { name: skillName, category } of skillsWithCategory) {
+          // Tìm skill theo tên (không phân biệt hoa thường)
+          let skill = await tx.skill.findFirst({
+            where: { name: { equals: skillName, mode: "insensitive" } },
+          });
+
+          // Nếu chưa có thì tạo mới — kèm category
+          if (!skill) {
+            skill = await tx.skill.create({
+              data: { name: skillName, category },
+            });
+          }
+
+          // Tạo liên kết CVSkill — bỏ qua nếu đã tồn tại (unique constraint)
+          await tx.cVSkill
+            .create({
+              data: { cvId: cv.id, skillId: skill.id },
+            })
+            .catch(() => null);
+        }
       });
-
-      if (!skill) {
-        skill = await prisma.skill.create({
-          data: { name: skillName },
-        });
-      }
-
-      // Tạo liên kết trong cv_skill
-      await prisma.cVSkill
-        .create({
-          data: {
-            cvId: cv.id,
-            skillId: skill.id,
-          },
-        })
-        .catch(() => null); // Bỏ qua nếu đã tồn tại
     }
+
     return NextResponse.json({
       message: "CV parsed and analyzed successfully.",
       data: updatedCV,
