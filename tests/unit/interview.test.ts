@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { AIAnalysisError, aiInternals } from "@/lib/ai";
 import {
+  buildInterviewQuestionsPrompt,
   CreateInterviewSessionSchema,
   evaluateInterviewAnswer,
   generateInterviewQuestions,
@@ -44,13 +45,26 @@ test("answer validation rejects empty answers and malformed IDs", () => {
   );
 });
 
+test("question generation prompt requires Vietnamese regardless of the role language", () => {
+  const prompt = buildInterviewQuestionsPrompt({
+    targetRole: "Backend Developer",
+    difficulty: "mid",
+    type: "MIXED",
+    questionCount: 3,
+  });
+
+  assert.match(prompt, /bằng tiếng Việt tự nhiên/i);
+  assert.match(prompt, /Không viết câu hỏi bằng tiếng Anh/i);
+  assert.match(prompt, /Bạn sẽ thiết kế một API đáng tin cậy như thế nào\?/);
+});
+
 test("question generation parses valid questions and uses requested settings", async () => {
   callCount = 0;
   response = JSON.stringify({
     questions: [
-      { questionText: "How do you design a reliable API?", questionType: "TECHNICAL" },
-      { questionText: "How do you resolve a disagreement with a teammate?", questionType: "BEHAVIORAL" },
-      { questionText: "How do you improve database performance?", questionType: "TECHNICAL" },
+      { questionText: "Bạn thiết kế một API đáng tin cậy như thế nào?", questionType: "TECHNICAL" },
+      { questionText: "Bạn giải quyết bất đồng với đồng đội như thế nào?", questionType: "BEHAVIORAL" },
+      { questionText: "Bạn cải thiện hiệu năng cơ sở dữ liệu như thế nào?", questionType: "TECHNICAL" },
     ],
   });
 

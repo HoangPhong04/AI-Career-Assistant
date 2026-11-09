@@ -59,6 +59,31 @@ export async function GET(request: NextRequest) {
   return apiSuccess({ sessions });
 }
 
+export async function DELETE(request: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user)
+    return apiError(401, "UNAUTHENTICATED", "Please sign in to continue");
+
+  const sessionId = request.nextUrl.searchParams.get("sessionId");
+  if (!sessionId)
+    return apiError(400, "SESSION_ID_REQUIRED", "A sessionId is required.");
+  if (!InterviewSessionIdSchema.safeParse(sessionId).success)
+    return apiError(400, "INVALID_SESSION_ID", "The sessionId must be a UUID.");
+
+  try {
+    const deleted = await prisma.interviewSession.deleteMany({
+      where: { id: sessionId, userId: user.id },
+    });
+    if (deleted.count === 0)
+      return apiError(404, "SESSION_NOT_FOUND", "Interview session not found.");
+
+    return apiSuccess({ deleted: true });
+  } catch (error) {
+    console.error("[interview/session] Failed to delete interview session:", error);
+    return apiError(500, "SESSION_DELETION_FAILED", "Unable to delete the interview session.");
+  }
+}
+
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user)

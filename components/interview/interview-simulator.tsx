@@ -56,6 +56,7 @@ export function InterviewSimulator() {
   const [creating, setCreating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [evaluatingQuestionId, setEvaluatingQuestionId] = useState("");
+  const [deletingSessionId, setDeletingSessionId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -227,6 +228,45 @@ export function InterviewSimulator() {
     setSession(selected);
     setAnswer("");
     setError("");
+  }
+
+  async function deleteSession(selected: InterviewSession) {
+    if (
+      !window.confirm(
+        `Bạn có chắc muốn xóa buổi phỏng vấn "${selected.position}"? Hành động này không thể hoàn tác.`
+      )
+    ) {
+      return;
+    }
+
+    setError("");
+    setDeletingSessionId(selected.id);
+    try {
+      const response = await fetch(
+        `/api/interview/session?sessionId=${encodeURIComponent(selected.id)}`,
+        { method: "DELETE" }
+      );
+      if (!response.ok) throw new Error(await readError(response));
+
+      const remainingSessions = sessions.filter(
+        (item) => item.id !== selected.id
+      );
+      setSessions(remainingSessions);
+      if (session?.id === selected.id) {
+        setSession(
+          remainingSessions.find((item) => item.status !== "COMPLETED") ?? null
+        );
+        setAnswer("");
+      }
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Không thể xóa buổi phỏng vấn."
+      );
+    } finally {
+      setDeletingSessionId("");
+    }
   }
 
   if (loading) {
@@ -477,10 +517,10 @@ export function InterviewSimulator() {
             {sessions.length ? (
               <ul className="mt-4 space-y-2">
                 {sessions.map((item) => (
-                  <li key={item.id}>
+                  <li className="flex items-center gap-2" key={item.id}>
                     <button
                       aria-current={session?.id === item.id ? "true" : undefined}
-                      className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                      className={`min-w-0 flex-1 rounded-xl border px-3 py-3 text-left transition ${
                         session?.id === item.id
                           ? "border-violet-300 bg-violet-50"
                           : "border-slate-100 hover:bg-slate-50"
@@ -496,6 +536,15 @@ export function InterviewSimulator() {
                           ? "Đã hoàn thành"
                           : `${item.questions.filter((question) => question.userAnswer !== null).length}/${item.questions.length} câu`}
                       </span>
+                    </button>
+                    <button
+                      aria-label={`Xóa buổi phỏng vấn ${item.position}`}
+                      className="shrink-0 rounded-lg px-2 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={deletingSessionId !== ""}
+                      onClick={() => void deleteSession(item)}
+                      type="button"
+                    >
+                      {deletingSessionId === item.id ? "Đang xóa..." : "Xóa"}
                     </button>
                   </li>
                 ))}
