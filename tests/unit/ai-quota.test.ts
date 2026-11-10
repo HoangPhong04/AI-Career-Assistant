@@ -15,7 +15,7 @@ import {
   formatResetCountdown,
   isQuotaExceeded,
 } from "@/lib/ai/quota";
-import { readQuotaError } from "@/lib/ai/quota-client";
+import { readApiFailure, readQuotaError } from "@/lib/ai/quota-client";
 
 // The exact payload the provider returned in the reported incident.
 const REAL_429_MESSAGE = `429 [{"error":{"code":429,"message":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://aistudio.google.com/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash, description: Generate content requests per day limit exceeded on Free Tier. See https://aistudio.google.com/docs/rate-limits.\nPlease retry in 4h51m2.402105417s.","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.Help","links":[{"description":"Learn more about Gemini API quotas","url":"https://aistudio.google.com/docs/rate-limits"}]},{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"description":"Generate content requests per day limit exceeded on Free Tier. See https://aistudio.google.com/docs/rate-limits.","quotaMetric":"generativelanguage.googleapis.com/generate_content_free_tier_requests","quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","quotaDimensions":{"location":"global","model":"gemini-3.6-flash"},"quotaValue":"20"}]},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"17462s"}]}}]`;
@@ -172,4 +172,46 @@ test("readQuotaError supplies a default message when none is present", () => {
 
   assert.ok(quota);
   assert.match(quota.message, /lượt phân tích AI/i);
+});
+
+test("readApiFailure parses a non-quota API error body only once", async () => {
+  let reads = 0;
+  const failure = await readApiFailure({
+    async json() {
+      reads += 1;
+      return {
+        error: {
+          code: "AI_UNAVAILABLE",
+          message: "Dịch vụ AI tạm thời không khả dụng.",
+        },
+      };
+    },
+  });
+
+  assert.equal(reads, 1);
+  assert.equal(failure.message, "Dịch vụ AI tạm thời không khả dụng.");
+  assert.equal(failure.quota, null);
+});
+
+test("readApiFailure extracts quota details from the same parsed body", async () => {
+  let reads = 0;
+  const failure = await readApiFailure({
+    async json() {
+      reads += 1;
+      return {
+        error: {
+          code: "AI_QUOTA_EXCEEDED",
+          message: "Đã hết lượt AI.",
+          resetsAt: 1_700_000_000_000,
+        },
+      };
+    },
+  });
+
+  assert.equal(reads, 1);
+  assert.equal(failure.message, "Đã hết lượt AI.");
+  assert.deepEqual(failure.quota, {
+    message: "Đã hết lượt AI.",
+    resetsAt: 1_700_000_000_000,
+  });
 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
-import { readQuotaError } from "@/lib/ai/quota-client";
+import { readApiFailure } from "@/lib/ai/quota-client";
 import { QuotaNotice } from "@/components/shared/quota-notice";
 
 type InterviewQuestion = {
@@ -26,9 +26,6 @@ type InterviewSession = {
   questions: InterviewQuestion[];
 };
 
-type ApiError = {
-  error?: { code?: string; message?: string; resetsAt?: number };
-};
 type SessionResponse = { data?: { session: InterviewSession } };
 
 const LEVELS = ["fresher", "junior", "mid", "senior"] as const;
@@ -37,24 +34,6 @@ const TYPES = [
   { value: "TECHNICAL", label: "Kỹ thuật" },
   { value: "BEHAVIORAL", label: "Hành vi" },
 ] as const;
-
-async function readError(response: Response): Promise<string> {
-  const body = (await response.json().catch(() => ({}))) as ApiError;
-  return body.error?.message ?? "Đã xảy ra lỗi. Vui lòng thử lại.";
-}
-
-/**
- * Read a quota failure out of a failed response.
- *
- * Returns null when the failure is not a quota problem, so callers can fall
- * back to the generic error path.
- */
-async function readQuotaFailure(
-  response: Response
-): Promise<{ message: string; resetsAt?: number } | null> {
-  const body = await response.json().catch(() => ({}));
-  return readQuotaError(body);
-}
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("vi-VN", {
@@ -89,7 +68,10 @@ export function InterviewSimulator() {
     async function loadSessions() {
       try {
         const response = await fetch("/api/interview/session");
-        if (!response.ok) throw new Error(await readError(response));
+        if (!response.ok) {
+          const failure = await readApiFailure(response);
+          throw new Error(failure.message);
+        }
         const body = (await response.json()) as {
           data?: { sessions: InterviewSession[] };
         };
@@ -145,12 +127,12 @@ export function InterviewSimulator() {
       });
 
       if (!response.ok) {
-        const quota = await readQuotaFailure(response);
-        if (quota) {
-          setQuotaError(quota);
+        const failure = await readApiFailure(response);
+        if (failure.quota) {
+          setQuotaError(failure.quota);
           return;
         }
-        throw new Error(await readError(response));
+        throw new Error(failure.message);
       }
 
       const body = (await response.json()) as SessionResponse;
@@ -188,12 +170,12 @@ export function InterviewSimulator() {
       });
 
       if (!response.ok) {
-        const quota = await readQuotaFailure(response);
-        if (quota) {
-          setQuotaError(quota);
+        const failure = await readApiFailure(response);
+        if (failure.quota) {
+          setQuotaError(failure.quota);
           return;
         }
-        throw new Error(await readError(response));
+        throw new Error(failure.message);
       }
 
       const body = (await response.json()) as {
@@ -257,7 +239,10 @@ export function InterviewSimulator() {
           answer,
         }),
       });
-      if (!response.ok) throw new Error(await readError(response));
+      if (!response.ok) {
+        const failure = await readApiFailure(response);
+        throw new Error(failure.message);
+      }
 
       const body = (await response.json()) as SessionResponse;
       if (!body.data?.session) throw new Error("Máy chủ không trả về buổi phỏng vấn.");
@@ -300,7 +285,10 @@ export function InterviewSimulator() {
         `/api/interview/session?sessionId=${encodeURIComponent(selected.id)}`,
         { method: "DELETE" }
       );
-      if (!response.ok) throw new Error(await readError(response));
+      if (!response.ok) {
+        const failure = await readApiFailure(response);
+        throw new Error(failure.message);
+      }
 
       const remainingSessions = sessions.filter(
         (item) => item.id !== selected.id

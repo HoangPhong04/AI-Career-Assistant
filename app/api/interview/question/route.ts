@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { apiError, apiSuccess } from "@/lib/utils";
 import {
+  getInterviewAnswerTransition,
   InterviewSessionIdSchema,
   SubmitInterviewAnswerSchema,
 } from "@/lib/interview";
@@ -70,14 +71,13 @@ export async function POST(request: NextRequest) {
           },
         });
         if (!session) return { error: "SESSION_NOT_FOUND" as const };
-        if (session.status === "COMPLETED")
-          return { error: "SESSION_COMPLETED" as const };
 
-        const nextQuestion = session.questions.find(
-          (question) => question.userAnswer === null
+        const transition = getInterviewAnswerTransition(
+          session.status,
+          session.questions,
+          parsed.data.questionId
         );
-        if (!nextQuestion || nextQuestion.id !== parsed.data.questionId)
-          return { error: "QUESTION_OUT_OF_ORDER" as const };
+        if ("error" in transition) return transition;
 
         const saved = await transaction.interviewQuestion.updateMany({
           where: {
@@ -89,15 +89,12 @@ export async function POST(request: NextRequest) {
         });
         if (saved.count !== 1) return { error: "ANSWER_ALREADY_SUBMITTED" as const };
 
-        const isComplete =
-          session.questions.filter((question) => question.userAnswer === null)
-            .length === 1;
         const updatedSession = await transaction.interviewSession.update({
           where: { id: session.id },
           data: {
-            status: isComplete ? "COMPLETED" : "IN_PROGRESS",
+            status: transition.isComplete ? "COMPLETED" : "IN_PROGRESS",
             startedAt: session.startedAt ?? new Date(),
-            endedAt: isComplete ? new Date() : null,
+            endedAt: transition.isComplete ? new Date() : null,
           },
           include: {
             questions: {

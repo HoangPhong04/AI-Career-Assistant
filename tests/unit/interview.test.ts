@@ -5,6 +5,7 @@ import {
   aiInternals,
   normalizeAIRequestError,
 } from "@/lib/ai";
+import { aiErrorResponse } from "@/lib/utils";
 import {
   buildInterviewAnswerPrompt,
   buildInterviewQuestionsPrompt,
@@ -13,6 +14,7 @@ import {
   evaluateInterviewAnswer,
   formatInterviewFeedback,
   generateInterviewQuestions,
+  getInterviewAnswerTransition,
   InterviewSessionIdSchema,
   INTERVIEW_TYPES,
   SubmitInterviewAnswerSchema,
@@ -21,6 +23,7 @@ import {
 let response = "";
 let queuedResponses: string[] = [];
 let callCount = 0;
+let requestFailure: unknown;
 
 test("AI quota errors are normalized without exposing provider response details", () => {
   const error = normalizeAIRequestError({
@@ -50,6 +53,9 @@ test("temporary Gemini unavailability is normalized to a Vietnamese retry messag
 test.before(() => {
   test.mock.method(aiInternals, "chatCompletion", async () => {
     callCount += 1;
+    if (requestFailure !== undefined) {
+      throw normalizeAIRequestError(requestFailure);
+    }
     return queuedResponses.shift() ?? response;
   });
 });
@@ -111,6 +117,111 @@ test("overall interview score requires every answer to be evaluated and rounds t
   assert.equal(calculateInterviewOverallScore([80, "91", 89]), 86.67);
   assert.equal(calculateInterviewOverallScore([80, null]), null);
   assert.equal(calculateInterviewOverallScore([]), null);
+});
+
+test("answer transitions enforce order, completion, and the final session state", () => {
+  const questions = [
+    { id: "question-1", userAnswer: null },
+    { id: "question-2", userAnswer: null },
+    { id: "question-3", userAnswer: null },
+  ];
+
+  assert.deepEqual(
+    getInterviewAnswerTransition("CREATED", questions, "question-2"),
+    { error: "QUESTION_OUT_OF_ORDER" }
+  );
+  assert.deepEqual(
+    getInterviewAnswerTransition("COMPLETED", questions, "question-1"),
+    { error: "SESSION_COMPLETED" }
+  );
+  assert.deepEqual(
+    getInterviewAnswerTransition("CREATED", questions, "question-1"),
+    { isComplete: false }
+  );
+  assert.deepEqual(
+    getInterviewAnswerTransition(
+      "IN_PROGRESS",
+      [
+        { id: "question-1", userAnswer: "Answer 1" },
+        { id: "question-2", userAnswer: "Answer 2" },
+        { id: "question-3", userAnswer: null },
+      ],
+      "question-3"
+    ),
+    { isComplete: true }
+  );
+  assert.deepEqual(
+    getInterviewAnswerTransition(
+      "COMPLETED",
+      questions.map((question) => ({
+        ...question,
+        userAnswer: "Already answered",
+      })),
+      "question-3"
+    ),
+    { error: "SESSION_COMPLETED" }
+  );
+});
+
+test("answer evaluation returns quota failures without retrying and preserves the API contract", async () => {
+  callCount = 0;
+  requestFailure = Object.assign(
+    new Error("You exceeded your current quota. Private provider payload."),
+    { status: 429 }
+  );
+
+  try {
+    await assert.rejects(
+      () =>
+        evaluateInterviewAnswer({
+          targetRole: "Backend Developer",
+          difficulty: "junior",
+          question: "Bạn kiểm thử API như thế nào?",
+          questionType: "TECHNICAL",
+          answer: "Tôi viết kiểm thử đơn vị.",
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof AIAnalysisError);
+        assert.equal(error.code, "AI_QUOTA_EXCEEDED");
+        assert.doesNotMatch(error.message, /Private provider payload/);
+        return true;
+      }
+    );
+  } finally {
+    requestFailure = undefined;
+  }
+
+  assert.equal(callCount, 1);
+});
+
+test("AI timeouts return a retryable upstream failure without a JSON retry", async () => {
+  callCount = 0;
+  requestFailure = Object.assign(new Error("The AI request timed out."), {
+    name: "APIConnectionTimeoutError",
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        evaluateInterviewAnswer({
+          targetRole: "Backend Developer",
+          difficulty: "junior",
+          question: "Bạn kiểm thử API như thế nào?",
+          questionType: "TECHNICAL",
+          answer: "Tôi viết kiểm thử đơn vị.",
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof AIAnalysisError);
+        assert.equal(error.code, "AI_REQUEST_FAILED");
+        assert.equal(aiErrorResponse(error, "Evaluation failed").status, 502);
+        return true;
+      }
+    );
+  } finally {
+    requestFailure = undefined;
+  }
+
+  assert.equal(callCount, 1);
 });
 
 test("question generation parses valid questions and uses requested settings", async () => {

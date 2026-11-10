@@ -16,7 +16,7 @@ export function apiError(status: number, code: string, message: string) {
  * the provider's daily budget is spent. They answer with 429 and carry the
  * moment the budget resets so the client can tell the user when to retry.
  *
- * Every other failure stays a 500 with the raw message for debugging.
+ * Other upstream failures use 502; unavailable providers use 503.
  */
 export function aiErrorResponse(
 	err: unknown,

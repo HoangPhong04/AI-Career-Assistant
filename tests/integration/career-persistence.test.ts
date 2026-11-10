@@ -310,7 +310,7 @@ test("the API answers a quota failure with 429 and the reset time", async () => 
   assert.doesNotMatch(body.error.message, /quotaMetric/);
 });
 
-test("the API answers an ordinary AI failure with 500", async () => {
+test("the API answers an ordinary AI failure with 502", async () => {
   const { aiErrorResponse } = await import("@/lib/utils");
 
   const response = aiErrorResponse(
@@ -318,7 +318,7 @@ test("the API answers an ordinary AI failure with 500", async () => {
     "Roadmap generation failed."
   );
 
-  assert.equal(response.status, 500);
+  assert.equal(response.status, 502);
 
   const body = (await response.json()) as { error: { code: string } };
   assert.equal(body.error.code, "AI_REQUEST_FAILED");

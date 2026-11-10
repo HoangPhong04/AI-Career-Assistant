@@ -48,6 +48,35 @@ export type InterviewAnswerEvaluation = z.infer<
   typeof InterviewAnswerEvaluationSchema
 >;
 
+export type InterviewAnswerState = {
+  id: string;
+  userAnswer: string | null;
+};
+
+export function getInterviewAnswerTransition(
+  status: string,
+  questions: InterviewAnswerState[],
+  questionId: string
+):
+  | { error: "SESSION_COMPLETED" | "QUESTION_OUT_OF_ORDER" }
+  | { isComplete: boolean } {
+  if (status === "COMPLETED") {
+    return { error: "SESSION_COMPLETED" };
+  }
+
+  const nextQuestion = questions.find(
+    (question) => question.userAnswer === null
+  );
+  if (!nextQuestion || nextQuestion.id !== questionId) {
+    return { error: "QUESTION_OUT_OF_ORDER" };
+  }
+
+  return {
+    isComplete:
+      questions.filter((question) => question.userAnswer === null).length === 1,
+  };
+}
+
 export function calculateInterviewOverallScore(
   scores: Array<number | string | null>
 ): number | null {

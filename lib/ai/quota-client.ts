@@ -13,6 +13,35 @@ export type QuotaError = {
   resetsAt?: number;
 };
 
+export type ApiFailure = {
+  message: string;
+  quota: QuotaError | null;
+};
+
+const DEFAULT_API_ERROR_MESSAGE = "Đã xảy ra lỗi. Vui lòng thử lại.";
+
+export async function readApiFailure(
+  response: Pick<Response, "json">
+): Promise<ApiFailure> {
+  const body: unknown = await response.json().catch(() => ({}));
+  const error =
+    typeof body === "object" && body !== null && "error" in body
+      ? body.error
+      : null;
+  const message =
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+      ? error.message
+      : DEFAULT_API_ERROR_MESSAGE;
+
+  return {
+    message,
+    quota: readQuotaError(body),
+  };
+}
+
 /**
  * Return the quota details when `body` describes a quota failure, else null.
  *
