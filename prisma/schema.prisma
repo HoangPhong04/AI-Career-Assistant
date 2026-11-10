@@ -42,6 +42,9 @@ model CV {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   roadmaps      CareerRoadmap[]
   skills        CVSkill[]
+  educations  Education[]
+  experiences Experience[]
+  projects    Project[]
 
   @@map("cvs")
 }
@@ -165,6 +168,8 @@ model Education {
   description String?   @db.Text
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cvId String? @map("cv_id") @db.Uuid
+  cv   CV?     @relation(fields: [cvId], references: [id], onDelete: Cascade)
 
   @@map("education")
 }
@@ -180,6 +185,8 @@ model Experience {
   isCurrent   Boolean   @default(false) @map("is_current")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cvId String? @map("cv_id") @db.Uuid
+  cv   CV?     @relation(fields: [cvId], references: [id], onDelete: Cascade)
 
   @@map("experience")
 }
@@ -189,12 +196,14 @@ model Project {
   userId       String    @map("user_id") @db.Uuid
   name         String    @db.VarChar(255)
   description  String?   @db.Text
-  technologies String?   @db.VarChar(255)
   startDate    DateTime? @map("start_date") @db.Date
   endDate      DateTime? @map("end_date") @db.Date
   url          String?   @db.VarChar(255)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cvId         String?  @map("cv_id") @db.Uuid
+  cv           CV?      @relation(fields: [cvId], references: [id], onDelete: Cascade)
+  technologies String?  @db.Text   // đổi từ VarChar(255) để khỏi bị cắt
 
   @@map("project")
 }

@@ -29,8 +29,9 @@ test("AI quota errors are normalized without exposing provider response details"
       '{"error":{"status":"RESOURCE_EXHAUSTED","message":"quota exceeded: private provider details"}}',
   });
 
-  assert.equal(error.code, "RATE_LIMITED");
-  assert.match(error.message, /Hạn mức sử dụng Gemini/);
+  assert.equal(error.code, "AI_QUOTA_EXCEEDED");
+  assert.match(error.message, /lượt phân tích AI/i);
+  assert.ok(error.resetsAt);
   assert.doesNotMatch(error.message, /private provider details|RESOURCE_EXHAUSTED/);
 });
 

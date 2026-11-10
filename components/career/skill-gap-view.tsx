@@ -1,5 +1,7 @@
 "use client";
 
+import { QuotaNotice } from "@/components/shared/quota-notice";
+
 type SkillGapItem = {
   skill: string;
   category: "technical" | "soft";
@@ -28,6 +30,8 @@ type SkillGapViewProps = {
   onGenerateRoadmap: () => void;
   isGenerating: boolean;
   error: string;
+  /** Set when the AI daily quota is exhausted. */
+  quotaError?: { message: string; resetsAt?: number } | null;
 };
 
 const categoryLabel: Record<SkillGapItem["category"], string> = {
@@ -46,6 +50,7 @@ export function SkillGapView({
   onGenerateRoadmap,
   isGenerating,
   error,
+  quotaError,
 }: SkillGapViewProps) {
   const mustHave = skillGap.gapSkills.filter((s) => s.importance === "must-have");
   const niceToHave = skillGap.gapSkills.filter((s) => s.importance === "nice-to-have");
@@ -142,6 +147,15 @@ export function SkillGapView({
             Hãy tập trung vào kinh nghiệm thực tế và phỏng vấn.
           </p>
         </div>
+      )}
+
+      {/* Quota notice */}
+      {quotaError && (
+        <QuotaNotice
+          className="mt-6"
+          message={quotaError.message}
+          resetsAt={quotaError.resetsAt}
+        />
       )}
 
       {/* Error */}

@@ -5,6 +5,11 @@
  */
 import OpenAI from "openai";
 
+import {
+  AI_QUOTA_EXCEEDED_CODE,
+  describeQuotaExceeded,
+} from "./quota";
+
 /** Shared error class for all AI operations. */
 export class AIAnalysisError extends Error {
   constructor(
@@ -14,7 +19,10 @@ export class AIAnalysisError extends Error {
       | "RATE_LIMITED"
       | "AI_UNAVAILABLE"
       | "AI_REQUEST_FAILED"
-      | "INVALID_RESPONSE_SCHEMA"
+      | "AI_QUOTA_EXCEEDED"
+      | "INVALID_RESPONSE_SCHEMA",
+    /** Epoch ms when a rate/quota limit resets. Only set for quota errors. */
+    public resetsAt?: number
   ) {
     super(message);
     this.name = "AIAnalysisError";
@@ -27,8 +35,11 @@ export class AICareerError extends Error {
     public code:
       | "API_KEY_MISSING"
       | "AI_REQUEST_FAILED"
+      | "AI_QUOTA_EXCEEDED"
       | "INVALID_RESPONSE_SCHEMA"
-      | "CONTENT_TOO_LONG"
+      | "CONTENT_TOO_LONG",
+    /** Epoch ms when a rate/quota limit resets. Only set for quota errors. */
+    public resetsAt?: number
   ) {
     super(message);
     this.name = "AICareerError";
@@ -62,9 +73,11 @@ export function normalizeAIRequestError(error: unknown): AIAnalysisError {
     status === 429 ||
     /\bRESOURCE_EXHAUSTED\b|quota exceeded|rate limit/i.test(message)
   ) {
+    const quota = describeQuotaExceeded(error);
     return new AIAnalysisError(
-      "Hạn mức sử dụng Gemini đã đạt giới hạn. Hãy kiểm tra hạn mức và gói thanh toán, hoặc đợi đến khi hạn mức được đặt lại rồi thử lại.",
-      "RATE_LIMITED"
+      quota.message,
+      AI_QUOTA_EXCEEDED_CODE,
+      quota.resetsAt
     );
   }
 

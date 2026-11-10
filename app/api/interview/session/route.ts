@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { apiError, apiSuccess } from "@/lib/utils";
+import { aiErrorResponse, apiError, apiSuccess } from "@/lib/utils";
 import {
   AIAnalysisError,
 } from "@/lib/ai";
@@ -25,15 +25,6 @@ const interviewSessionInclude = {
     },
   },
 };
-
-function aiErrorResponse(error: AIAnalysisError) {
-  if (error.code === "RATE_LIMITED")
-    return apiError(429, error.code, error.message);
-  if (error.code === "AI_UNAVAILABLE")
-    return apiError(503, error.code, error.message);
-  const status = error.code === "API_KEY_MISSING" ? 503 : 502;
-  return apiError(status, error.code, error.message);
-}
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -126,7 +117,8 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ session }, 201);
   } catch (error) {
-    if (error instanceof AIAnalysisError) return aiErrorResponse(error);
+    if (error instanceof AIAnalysisError)
+      return aiErrorResponse(error, "Không thể tạo buổi phỏng vấn.");
     console.error("[interview/session] Failed to create interview session:", error);
     return apiError(
       500,

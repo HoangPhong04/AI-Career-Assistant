@@ -5,6 +5,10 @@
  *  - `analyzeSkillGap(input)`          → SkillGap
  *  - `generateRoadmap(input)`          → CareerAnalyzeResult
  *  - `buildAnalyzePrompt(input)`       → raw AI prompt (for route handlers)
+ *
+ * This barrel is safe to import from client components. Database-backed
+ * helpers live in `./skill-repository` and must be imported directly:
+ *   import { resolveCvSkills } from "@/lib/career/skill-repository";
  */
 
 import {
@@ -16,7 +20,7 @@ import {
   type SkillGap,
 } from "./validators";
 
-import { aiInternals, stripJsonFence, AICareerError } from "@/lib/ai";
+import { aiInternals, stripJsonFence, AICareerError, AIAnalysisError } from "@/lib/ai";
 
 // ─── Prompt templates ──────────────────────────────────────────────────────────
 
@@ -31,15 +35,22 @@ respond ONLY with a valid JSON object — no markdown, no extra text.
  * Called by the route handler so the prompt is auditable in one place.
  */
 export function buildSkillGapPrompt(input: CareerAnalyzeInput): string {
+  const targetLevel = input.targetLevel ?? input.currentLevel;
   const skills = input.currentSkills
     ? `Current skills:\n  Technical: ${input.currentSkills.technical.join(", ") || "(none)"}\n  Soft: ${input.currentSkills.soft.join(", ") || "(none)"}`
     : input.cvText
     ? `CV text for you to extract current skills:\n"""\n${input.cvText}\n"""`
-    : "No CV text or skill list provided — infer the current level from the target role.";
+    : `No CV text or skill list provided.
+The candidate has NOT listed their skills, so you must INFER a realistic skill
+profile for someone at the "${input.currentLevel}" level in "${input.targetRole}",
+then compare it against what the "${targetLevel}" level requires.
+State your assumption clearly in "gapSummary" (e.g. "Dựa trên tiêu chuẩn
+${input.currentLevel} của vị trí ..., bạn hiện có thể đang ở ...").`;
 
   return `
 Analyze the skill gap for a candidate targeting the role of "${input.targetRole}"
-at the "${input.currentLevel}" level.
+at the "${targetLevel}" level.
+The candidate's CURRENT level is "${input.currentLevel}".
 
 ${skills}
 
@@ -75,15 +86,21 @@ Respond with this EXACT JSON structure (no markdown fences):
  * This is the main prompt used by POST /api/career/roadmap.
  */
 export function buildRoadmapPrompt(input: CareerAnalyzeInput): string {
+  const targetLevel = input.targetLevel ?? input.currentLevel;
   const skills = input.currentSkills
     ? `Current skills:\n  Technical: ${input.currentSkills.technical.join(", ") || "(none)"}\n  Soft: ${input.currentSkills.soft.join(", ") || "(none)"}`
     : input.cvText
     ? `CV text for you to extract current skills:\n"""\n${input.cvText}\n"""`
-    : "No CV text or skill list provided.";
+    : `No CV text or skill list provided.
+The candidate has NOT listed their skills. INFER a realistic skill profile for
+someone at the "${input.currentLevel}" level in "${input.targetRole}" and use it
+as the baseline. Reflect that inference in "skillGap.gapSummary" so the user
+knows the plan is based on an assumption rather than their own CV.`;
 
   return `
 You are a career development advisor. For a candidate targeting "${input.targetRole}"
-at the "${input.currentLevel}" level, produce a complete career roadmap.
+at the "${targetLevel}" level, produce a complete career roadmap.
+The candidate's CURRENT level is "${input.currentLevel}".
 
 ${skills}
 
@@ -179,7 +196,7 @@ export function normalizeRoadmapResponse(
     targetLevel:
       typeof response.targetLevel === "string"
         ? response.targetLevel
-        : input.currentLevel,
+        : input.targetLevel ?? input.currentLevel,
     skillGap: {
       ...skillGap,
       targetRole:
@@ -238,7 +255,12 @@ export async function analyzeSkillGap(
       maxTokens: 2048,
     });
   } catch (err) {
+    // A quota failure already carries its own code and reset time — it must
+    // not be downgraded to a generic request failure.
     if (err instanceof AICareerError) throw err;
+    if (err instanceof AIAnalysisError && err.code === "AI_QUOTA_EXCEEDED") {
+      throw new AICareerError(err.message, "AI_QUOTA_EXCEEDED", err.resetsAt);
+    }
     throw new AICareerError(
       `Skill gap analysis failed: ${(err as Error).message}`,
       "AI_REQUEST_FAILED"
@@ -293,7 +315,12 @@ export async function generateRoadmap(
       maxTokens: 4096,
     });
   } catch (err) {
+    // A quota failure already carries its own code and reset time — it must
+    // not be downgraded to a generic request failure.
     if (err instanceof AICareerError) throw err;
+    if (err instanceof AIAnalysisError && err.code === "AI_QUOTA_EXCEEDED") {
+      throw new AICareerError(err.message, "AI_QUOTA_EXCEEDED", err.resetsAt);
+    }
     throw new AICareerError(
       `Roadmap generation failed: ${(err as Error).message}`,
       "AI_REQUEST_FAILED"
@@ -341,3 +368,30 @@ export type {
   RoadmapStepUpdate,
   RoadmapProgress,
 } from "./validators";
+
+// ─── Skill source ────────────────────────────────────────────────────────────
+//
+// The database-backed helpers live in `./skill-repository` and are NOT
+// re-exported here: that module imports Prisma, and re-exporting it would
+// pull Node-only modules into any browser bundle that imports this barrel.
+//
+// Server-side consumers import them directly:
+//   import { resolveCvSkills } from "@/lib/career/skill-repository";
+
+export { getSkillsFromAnalysisJson, normalizeSkillCategory } from "./skill-repository";
+
+export type { CvSkillSource, SkillSets } from "./skill-repository";
+
+// ─── Re-export progress helpers for convenience ──────────────────────────────
+
+export {
+  buildRoadmapProgress,
+  cvSelectionHint,
+  nextStepStatus,
+  resolveSkillPayload,
+  summarizeProgress,
+  validateRoleInput,
+  COMPLETED_STATUS,
+} from "./progress";
+
+export type { ProgressStep } from "./progress";

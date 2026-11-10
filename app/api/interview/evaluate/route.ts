@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { apiError, apiSuccess } from "@/lib/utils";
+import { aiErrorResponse, apiError, apiSuccess } from "@/lib/utils";
 import { AIAnalysisError } from "@/lib/ai";
 import {
   calculateInterviewOverallScore,
@@ -118,12 +118,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof AIAnalysisError) {
-      if (error.code === "RATE_LIMITED")
-        return apiError(429, error.code, error.message);
-      if (error.code === "AI_UNAVAILABLE")
-        return apiError(503, error.code, error.message);
-      const status = error.code === "API_KEY_MISSING" ? 503 : 502;
-      return apiError(status, error.code, error.message);
+      return aiErrorResponse(error, "Không thể đánh giá câu trả lời.");
     }
     console.error("[interview/evaluate] Failed to evaluate interview answer:", error);
     return apiError(502, "EVALUATION_FAILED", "Unable to evaluate this answer.");
