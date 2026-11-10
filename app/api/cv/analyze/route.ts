@@ -199,11 +199,7 @@ export async function POST(request: Request) {
       where: { id: cvId, userId: currentUser.id },
     });
     if (!cv) {
-      return apiError(
-        404,
-        "CV_NOT_FOUND",
-        "CV not found or does not belong to you."
-      );
+      return apiError(404, "CV_NOT_FOUND", "CV not found or does not belong to you.");
     }
 
     // 1. Parse file

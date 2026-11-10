@@ -12,18 +12,6 @@ import { analyzeSkillGap, CareerAnalyzeInputSchema } from "@/lib/career";
 import { resolveCvSkills } from "@/lib/career/skill-repository";
 import type { z } from "zod";
 
-/**
- * Attach the skills of an analysed CV to the request payload.
- *
- * Skills come from the normalised `skill` ⨝ `cv_skill` tables written by the
- * CV Analyzer. Older CVs that predate the skill table fall back to the raw
- * `analysisJson` payload.
- *
- * When no `cvId` is supplied the request carries no skills at all — the AI
- * then infers a realistic skill profile from the candidate's current level
- * and target role. We never silently fall back to the most recent CV,
- * otherwise the analysis would describe skills the user did not pick.
- */
 async function applyAnalyzedCV(userId: string, input: z.infer<typeof CareerAnalyzeInputSchema>) {
   if (!input.cvId) {
     return { input, cvId: undefined };

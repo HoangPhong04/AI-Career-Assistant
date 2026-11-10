@@ -55,14 +55,11 @@ export async function POST(req: NextRequest) {
         select: { id: true, extractedText: true, analysisJson: true },
       })
     : null;
-
   if (requestedCvId && !cv)
     return apiError(404, "CV_NOT_FOUND", "Analyzed CV not found or does not belong to you.");
-
   if (cv) {
     cvId = cv.id;
-    // Skills come from the normalised `skill` ⨝ `cv_skill` tables; legacy CVs
-    // that predate the skill table fall back to their raw analysis payload.
+    // Skills come from the normalized skill tables, with a legacy JSON fallback.
     const resolved = await resolveCvSkills(cv);
     input = {
       ...input,

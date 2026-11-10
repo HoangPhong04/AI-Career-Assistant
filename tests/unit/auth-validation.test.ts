@@ -32,6 +32,7 @@ test("registration rejects passwords beyond bcrypt's UTF-8 byte limit", () => {
 
 test("profile update rejects fields outside the allowlist", () => {
   assert.equal(updateProfileSchema.safeParse({ role: "ADMIN" }).success, false);
+  assert.equal(updateProfileSchema.safeParse({ avatarUrl: "https://example.com/avatar.png" }).success, false);
 });
 
 test("profile update requires at least one valid field", () => {

@@ -163,6 +163,8 @@ uploads/*
 # Uploaded CV files
 storage/cvs/*
 !storage/cvs/.gitkeep
+storage/avatars/*
+!storage/avatars/.gitkeep
 
 aca-images.tar
 *.tar
