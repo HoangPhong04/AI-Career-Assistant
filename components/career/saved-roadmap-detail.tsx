@@ -1,11 +1,16 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { CareerAnalyzeResult } from "@/lib/career";
+// Imported from the pure module directly (not the `@/lib/career` barrel):
+// the barrel re-exports the skill repository, which imports Prisma and
+// would pull Node-only modules into the browser bundle.
+import { nextStepStatus, summarizeProgress } from "@/lib/career/progress";
+import type { CareerAnalyzeResult } from "@/lib/career/validators";
 
 type Step = {
   id: string;
   status: string;
+  orderIndex: number;
 };
 
 type SavedRoadmapDetailProps = {
@@ -27,13 +32,6 @@ const STATUS_STYLE: Record<string, string> = {
   SKIPPED: "border-neutral-300 bg-neutral-100 text-neutral-400 line-through",
 };
 
-const NEXT_STATUS: Record<string, string> = {
-  PENDING: "IN_PROGRESS",
-  IN_PROGRESS: "COMPLETED",
-  COMPLETED: "PENDING",
-  SKIPPED: "PENDING",
-};
-
 export function SavedRoadmapDetail({
   roadmap,
   steps,
@@ -43,13 +41,14 @@ export function SavedRoadmapDetail({
   );
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
-  const tasks = roadmap.roadmap.phases.flatMap((phase) => phase.tasks);
-  const completed = steps.filter((step) => statuses[step.id] === "COMPLETED").length;
-  const percent = steps.length === 0 ? 0 : Math.round((completed / steps.length) * 100);
+  const stepsByOrderIndex = new Map(steps.map((step) => [step.orderIndex, step]));
+  const { completed, percent } = summarizeProgress(
+    steps.map((step) => ({ id: step.id, status: statuses[step.id] ?? step.status }))
+  );
 
   function updateStatus(stepId: string) {
     const current = statuses[stepId] ?? "PENDING";
-    const next = NEXT_STATUS[current] ?? "IN_PROGRESS";
+    const next = nextStepStatus(current);
     setError("");
     setStatuses((previous) => ({ ...previous, [stepId]: next }));
 
@@ -154,7 +153,7 @@ export function SavedRoadmapDetail({
               </ul>
               <div className="mt-4 space-y-3">
                 {phase.tasks.map((task, taskIndex) => {
-                  const step = steps[tasks.indexOf(task)];
+                  const step = stepsByOrderIndex.get(phaseIndex * 100 + taskIndex);
                   const status = step ? statuses[step.id] ?? step.status : "PENDING";
                   return (
                     <div className="rounded-lg border border-neutral-200 p-4" key={`${task.title}-${taskIndex}`}>

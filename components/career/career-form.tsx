@@ -2,10 +2,24 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+// Imported from the pure module directly (not the `@/lib/career` barrel):
+// the barrel re-exports the skill repository, which imports Prisma and
+// would pull Node-only modules into the browser bundle.
+import { cvSelectionHint, resolveSkillPayload, validateRoleInput } from "@/lib/career/progress";
+import { readQuotaError } from "@/lib/ai/quota-client";
+import { QuotaNotice } from "@/components/shared/quota-notice";
 import { SkillGapView } from "./skill-gap-view";
 import { RoadmapView } from "./roadmap-view";
 
 const LEVELS = ["fresher", "junior", "mid", "senior", "lead"] as const;
+
+const LEVEL_LABEL: Record<(typeof LEVELS)[number], string> = {
+  fresher: "Mới ra trường (0-1 năm)",
+  junior: "Junior (1-2 năm)",
+  mid: "Mid (2-5 năm)",
+  senior: "Senior (5-8 năm)",
+  lead: "Lead / Trưởng nhóm (8+ năm)",
+};
 
 function readError(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
@@ -77,12 +91,11 @@ type Task = {
 type CVOption = {
   id: string;
   originalName: string;
-  analysisJson: {
-    skills?: {
-      technical?: string[];
-      soft?: string[];
-    };
-  } | null;
+  skills: {
+    technical: string[];
+    soft: string[];
+  };
+  origin: "skill-table" | "analysis-json" | "none";
 };
 
 export function CareerForm() {
@@ -91,23 +104,27 @@ export function CareerForm() {
   const [currentLevel, setCurrentLevel] = useState<typeof LEVELS[number]>("junior");
   const [cvOptions, setCvOptions] = useState<CVOption[]>([]);
   const [selectedCvId, setSelectedCvId] = useState("");
+  /** The level the user wants to reach — drives the roadmap's target. */
+  const [targetLevel, setTargetLevel] = useState<typeof LEVELS[number]>("junior");
   const [view, setView] = useState<"form" | "gap" | "roadmap">("form");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
+  /** Set when the AI daily quota is exhausted — shown as a dedicated notice. */
+  const [quotaError, setQuotaError] = useState<{ message: string; resetsAt?: number } | null>(null);
+  const [roleError, setRoleError] = useState("");
   const [skillGapResult, setSkillGapResult] = useState<AnalyzeResponse["skillGap"] | null>(null);
   const [roadmapResult, setRoadmapResult] = useState<RoadmapResponse | null>(null);
   useEffect(() => {
     async function loadCVOptions() {
       try {
-        const res = await fetch("/api/cv");
+        // Skills are resolved server-side from the `skill` ⨝ `cv_skill` tables
+        // written by the CV Analyzer.
+        const res = await fetch("/api/career/cv-skills");
         if (!res.ok) return;
 
         const data: { data?: CVOption[] } = await res.json();
-        const analyzed = (data.data ?? []).filter(
-          (cv) => cv.analysisJson?.skills
-        );
-        setCvOptions(analyzed);
+        setCvOptions(data.data ?? []);
       } catch {
         setError("Không thể tải danh sách CV đã phân tích. Bạn vẫn có thể nhập role thủ công.");
       }
@@ -116,20 +133,52 @@ export function CareerForm() {
     void loadCVOptions();
   }, []);
 
+  /**
+   * The skills sent to the AI.
+   *
+   * With a CV selected we forward the skills resolved from the `skill` ⨝
+   * `cv_skill` tables. Without a CV we send nothing — the AI infers a
+   * realistic skill profile from the current level and target role instead.
+   */
   function selectedSkills() {
-    const cv = cvOptions.find((option) => option.id === selectedCvId);
-    const skills = cv?.analysisJson?.skills;
-    if (!skills) return undefined;
-
-    return {
-      technical: skills.technical ?? [],
-      soft: skills.soft ?? [],
-    };
+    return resolveSkillPayload(selectedCv());
   }
+
+  /** The CV the user picked, if any. */
+  function selectedCv() {
+    return cvOptions.find((option) => option.id === selectedCvId);
+  }
+
+  /**
+   * A target role is the only required field — the level and the CV are
+   * optional, because the AI can infer the skill profile on its own.
+   */
+  function validateBeforeSubmit(): boolean {
+    const message = validateRoleInput(targetRole);
+    setRoleError(message ?? "");
+    return message === null;
+  }
+
+  /** Số kỹ năng của CV đang chọn — dùng để hiển thị thông báo. */
+  const selectedSkillCount = (() => {
+    const cv = cvOptions.find((option) => option.id === selectedCvId);
+    if (!cv) return 0;
+    return (cv.skills.technical?.length ?? 0) + (cv.skills.soft?.length ?? 0);
+  })();
+
+  /**
+   * The analysis needs a role and a current level. Everything else is
+   * optional — without a CV the AI infers the current skills.
+   */
+  const canAnalyze = targetRole.trim().length > 0;
 
   async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setQuotaError(null);
+
+    if (!validateBeforeSubmit()) return;
+
     setIsAnalyzing(true);
 
     try {
@@ -139,6 +188,7 @@ export function CareerForm() {
         body: JSON.stringify({
           targetRole,
           currentLevel,
+          targetLevel,
           currentSkills: selectedSkills(),
           cvId: selectedCvId || undefined,
         }),
@@ -146,7 +196,12 @@ export function CareerForm() {
 
       const responseBody = (await res.json()) as { data?: AnalyzeResponse };
       if (!res.ok) {
-        setError(readError(responseBody) ?? "Phân tích thất bại.");
+        const quota = readQuotaError(responseBody);
+        if (quota) {
+          setQuotaError(quota);
+        } else {
+          setError(readError(responseBody) ?? "Phân tích thất bại.");
+        }
         return;
       }
 
@@ -161,6 +216,13 @@ export function CareerForm() {
 
   async function handleGenerateRoadmap() {
     setError("");
+    setQuotaError(null);
+
+    if (!validateBeforeSubmit()) {
+      setView("form");
+      return;
+    }
+
     setIsGenerating(true);
 
     try {
@@ -173,6 +235,7 @@ export function CareerForm() {
         body: JSON.stringify({
           targetRole,
           currentLevel,
+          targetLevel,
           currentSkills: selectedSkills(),
           cvId: selectedCvId || undefined,
         }),
@@ -180,7 +243,12 @@ export function CareerForm() {
 
       const responseBody = (await res.json()) as { data?: RoadmapResponse };
       if (!res.ok) {
-        setError(readError(responseBody) ?? "Tạo lộ trình thất bại.");
+        const quota = readQuotaError(responseBody);
+        if (quota) {
+          setQuotaError(quota);
+        } else {
+          setError(readError(responseBody) ?? "Tạo lộ trình thất bại.");
+        }
         return;
       }
 
@@ -209,16 +277,14 @@ export function CareerForm() {
               Xây dựng lộ trình sự nghiệp
             </h2>
             <p className="mt-1 text-sm text-neutral-500">
-              Nhập vai trò mục tiêu và cấp bậc hiện tại để phân tích khoảng cách kỹ năng
-              và nhận lộ trình phát triển chi tiết.
+              Nhập vai trò mục tiêu và cấp bậc hiện tại. AI sẽ tự suy luận kỹ năng
+              của bạn và đề xuất lộ trình để đạt cấp bậc mong muốn.
             </p>
           </div>
 
           <form className="mt-6 space-y-5" onSubmit={handleAnalyze}>
             <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              {selectedCvId
-                ? "Kỹ năng sẽ được lấy từ CV đã phân tích gần nhất."
-                : "Chưa có CV đã phân tích. Bạn có thể tải CV lên trước để kết quả chính xác hơn."}
+              {cvSelectionHint(selectedCvId, selectedSkillCount, cvOptions.length)}
             </p>
             <label className="block text-sm font-medium text-neutral-800">
               Vai trò mục tiêu
@@ -226,27 +292,58 @@ export function CareerForm() {
                 autoComplete="off"
                 className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
                 maxLength={100}
-                onChange={(e) => setTargetRole(e.target.value)}
-                placeholder="VD: Senior Frontend Developer, Data Engineer..."
-                required
+                onChange={(e) => {
+                  setTargetRole(e.target.value);
+                  if (e.target.value.trim()) setRoleError("");
+                }}
+                placeholder="VD: Senior Frontend Developer, Data Engineer, Kế toán trưởng..."
                 value={targetRole}
               />
+              {roleError && (
+                <span className="mt-1 block text-xs font-normal text-red-700" role="alert">
+                  {roleError}
+                </span>
+              )}
             </label>
 
-            <label className="block text-sm font-medium text-neutral-800">
-              Cấp bậc hiện tại
-              <select
-                className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-                onChange={(e) => setCurrentLevel(e.target.value as typeof LEVELS[number])}
-                value={currentLevel}
-              >
-                {LEVELS.map((l) => (
-                  <option key={l} value={l}>
-                    {l.charAt(0).toUpperCase() + l.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <label className="block text-sm font-medium text-neutral-800">
+                Cấp bậc hiện tại
+                <select
+                  className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:border-emerald-700/20"
+                  onChange={(e) => setCurrentLevel(e.target.value as typeof LEVELS[number])}
+                  value={currentLevel}
+                >
+                  {LEVELS.map((l) => (
+                    <option key={l} value={l}>
+                      {LEVEL_LABEL[l]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm font-medium text-neutral-800">
+                Cấp bậc mong muốn
+                <select
+                  className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:border-emerald-700/20"
+                  onChange={(e) => setTargetLevel(e.target.value as typeof LEVELS[number])}
+                  value={targetLevel}
+                >
+                  {LEVELS.map((l) => (
+                    <option key={l} value={l}>
+                      {LEVEL_LABEL[l]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {targetLevel === currentLevel && (
+              <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Cấp bậc hiện tại và cấp bậc mong muốn đang giống nhau. AI sẽ tập trung
+                vào các kỹ năng cần thiết để đạt chuẩn cấp bậc đó.
+              </p>
+            )}
 
             <label className="block text-sm font-medium text-neutral-800">
               CV đã phân tích
@@ -255,17 +352,25 @@ export function CareerForm() {
                 onChange={(e) => setSelectedCvId(e.target.value)}
                 value={selectedCvId}
               >
-                <option value="">Không chọn CV (nhập role thủ công)</option>
+                <option value="">Không chọn CV (AI tự suy luận kỹ năng)</option>
                 {cvOptions.map((cv) => (
                   <option key={cv.id} value={cv.id}>
-                    {cv.originalName}
+                    {cv.originalName} · {cv.skills.technical.length + cv.skills.soft.length} kỹ năng
                   </option>
                 ))}
               </select>
               <span className="mt-1 block text-xs font-normal text-neutral-500">
-                Chọn CV để AI sử dụng skills đã phân tích khi tính skill gap.
+                Chọn CV để AI sử dụng kỹ năng đã trích xuất. Bỏ qua nếu muốn AI tự suy luận.
               </span>
             </label>
+
+
+            {quotaError && (
+              <QuotaNotice
+                message={quotaError.message}
+                resetsAt={quotaError.resetsAt}
+              />
+            )}
 
             {error && (
               <p className="text-sm text-red-700" role="alert">{error}</p>
@@ -274,7 +379,7 @@ export function CareerForm() {
             <div className="flex gap-3 pt-1">
               <button
                 className="rounded bg-emerald-800 px-5 py-2.5 font-semibold text-white hover:bg-emerald-900 disabled:opacity-60"
-                disabled={isAnalyzing || !targetRole.trim()}
+                disabled={isAnalyzing || !targetRole.trim() || !canAnalyze}
                 type="submit"
               >
                 {isAnalyzing ? "Đang phân tích..." : "Phân tích Skill Gap"}
@@ -293,6 +398,7 @@ export function CareerForm() {
             onGenerateRoadmap={handleGenerateRoadmap}
             isGenerating={isGenerating}
             error={error}
+            quotaError={quotaError}
           />
         </section>
       )}

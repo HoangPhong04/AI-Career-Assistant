@@ -4,13 +4,18 @@ import {
 } from "@/lib/cv/validators/cv-analysis";
 import OpenAI from "openai";
 
+import { describeQuotaExceeded, isQuotaExceeded } from "./quota";
+
 export class AIAnalysisError extends Error {
   constructor(
     message: string,
     public code:
       | "API_KEY_MISSING"
       | "AI_REQUEST_FAILED"
-      | "INVALID_RESPONSE_SCHEMA"
+      | "AI_QUOTA_EXCEEDED"
+      | "INVALID_RESPONSE_SCHEMA",
+    /** Epoch ms when a rate/quota limit resets. Only set for quota errors. */
+    public resetsAt?: number
   ) {
     super(message);
     this.name = "AIAnalysisError";
@@ -199,6 +204,13 @@ export async function analyzeCVWithAI(
 
     rawResponse = res.choices[0]?.message?.content || "";
   } catch (err: unknown) {
+    // Quota/rate-limit failures get their own code + reset time so the API
+    // can answer 429 with a friendly message instead of a raw 500.
+    if (isQuotaExceeded(err)) {
+      const quota = describeQuotaExceeded(err);
+      throw new AIAnalysisError(quota.message, "AI_QUOTA_EXCEEDED", quota.resetsAt);
+    }
+
     throw new AIAnalysisError(
       `Gemini request failed: ${(err as Error).message}`,
       "AI_REQUEST_FAILED"

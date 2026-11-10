@@ -17,7 +17,21 @@ export const CareerAnalyzeInputSchema = z.object({
   currentLevel: z.enum(["fresher", "junior", "mid", "senior", "lead"], {
     message: "Level must be one of: fresher, junior, mid, senior, lead",
   }),
-  /** Skills extracted from CV by Bình's analyzer. Optional fallback. */
+  /**
+   * The level the user wants to reach.
+   *
+   * When omitted it defaults to `currentLevel` — the AI then infers what a
+   * candidate at that level typically looks like and builds the gap from there.
+   */
+  targetLevel: z
+    .enum(["fresher", "junior", "mid", "senior", "lead"])
+    .optional(),
+  /**
+   * Skills extracted from CV by Bình's analyzer.
+   *
+   * Optional: when the user has no CV and types no skills, the AI infers a
+   * realistic skill profile from `currentLevel` + `targetRole` on its own.
+   */
   currentSkills: z
     .object({
       technical: z.array(z.string()).default([]),

@@ -59,6 +59,7 @@ export default async function SavedCareerRoadmapPage({
         steps={roadmap.steps.map((step) => ({
           id: step.id,
           status: step.status,
+          orderIndex: step.orderIndex,
         }))}
       />
     </main>
