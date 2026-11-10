@@ -8,7 +8,6 @@ import OpenAI from "openai";
 import {
   AI_QUOTA_EXCEEDED_CODE,
   describeQuotaExceeded,
-  isQuotaExceeded,
 } from "./quota";
 
 /** Shared error class for all AI operations. */
@@ -17,6 +16,8 @@ export class AIAnalysisError extends Error {
     message: string,
     public code:
       | "API_KEY_MISSING"
+      | "RATE_LIMITED"
+      | "AI_UNAVAILABLE"
       | "AI_REQUEST_FAILED"
       | "AI_QUOTA_EXCEEDED"
       | "INVALID_RESPONSE_SCHEMA",
@@ -54,11 +55,43 @@ function getAiClient(): OpenAI {
     _aiClient = new OpenAI({
       apiKey: process.env.GEMINI_API_KEY ?? "",
       baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-      maxRetries: 3,
+      maxRetries: 0,
       timeout: 45_000,
     });
   }
   return _aiClient;
+}
+
+export function normalizeAIRequestError(error: unknown): AIAnalysisError {
+  const message = error instanceof Error ? error.message : String(error);
+  const status =
+    typeof error === "object" && error !== null && "status" in error
+      ? error.status
+      : undefined;
+
+  if (
+    status === 429 ||
+    /\bRESOURCE_EXHAUSTED\b|quota exceeded|rate limit/i.test(message)
+  ) {
+    const quota = describeQuotaExceeded(error);
+    return new AIAnalysisError(
+      quota.message,
+      AI_QUOTA_EXCEEDED_CODE,
+      quota.resetsAt
+    );
+  }
+
+  if (
+    status === 503 ||
+    /\bUNAVAILABLE\b|high demand|temporarily unavailable/i.test(message)
+  ) {
+    return new AIAnalysisError(
+      "Dịch vụ Gemini hiện đang quá tải hoặc tạm thời không khả dụng. Vui lòng đợi một lúc rồi thử lại.",
+      "AI_UNAVAILABLE"
+    );
+  }
+
+  return new AIAnalysisError(`AI request failed: ${message}`, "AI_REQUEST_FAILED");
 }
 
 /**
@@ -101,19 +134,7 @@ export async function aiChatCompletion({
 
     return res.choices[0]?.message?.content ?? "";
   } catch (err: unknown) {
-    // A quota/rate-limit failure is not a generic request failure — it needs
-    // its own code and a reset timestamp so the API can answer 429 and the UI
-    // can tell the user when to come back.
-    if (isQuotaExceeded(err)) {
-      const quota = describeQuotaExceeded(err);
-      throw new AIAnalysisError(quota.message, AI_QUOTA_EXCEEDED_CODE, quota.resetsAt);
-    }
-
-    const message = err instanceof Error ? err.message : String(err);
-    throw new AIAnalysisError(
-      `AI request failed: ${message}`,
-      "AI_REQUEST_FAILED"
-    );
+    throw normalizeAIRequestError(err);
   }
 }
 

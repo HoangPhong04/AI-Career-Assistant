@@ -40,6 +40,22 @@ export function aiErrorResponse(
 		);
 	}
 
+	if (code === "AI_UNAVAILABLE" || code === "API_KEY_MISSING") {
+		return apiError(
+			503,
+			code,
+			(err as Error).message || fallbackMessage,
+		);
+	}
+
+	if (code === "AI_REQUEST_FAILED" || code === "INVALID_RESPONSE_SCHEMA") {
+		return apiError(
+			502,
+			code,
+			(err as Error).message || fallbackMessage,
+		);
+	}
+
 	return apiError(500, code, (err as Error).message ?? fallbackMessage);
 }
 

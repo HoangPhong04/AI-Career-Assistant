@@ -22,6 +22,7 @@ type InterviewSession = {
   type: string | null;
   status: string;
   createdAt: string;
+  overallScore: number | string | null;
   questions: InterviewQuestion[];
 };
 
@@ -122,6 +123,8 @@ export function InterviewSimulator() {
   const completedCount =
     session?.questions.filter((question) => question.userAnswer !== null)
       .length ?? 0;
+  const evaluatedCount =
+    session?.questions.filter((question) => question.score !== null).length ?? 0;
 
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -194,10 +197,14 @@ export function InterviewSimulator() {
       }
 
       const body = (await response.json()) as {
-        data?: { evaluation: { feedback: string; score: number | string } };
+        data?: {
+          evaluation: { feedback: string; score: number | string };
+          overallScore: number | string | null;
+        };
       };
       const evaluation = body.data?.evaluation;
       if (!evaluation) throw new Error("Máy chủ không trả về kết quả đánh giá.");
+      const overallScore = body.data?.overallScore ?? null;
       const updateQuestion = (item: InterviewQuestion) =>
         item.id === questionId
           ? {
@@ -208,12 +215,18 @@ export function InterviewSimulator() {
           : item;
       setSession((current) =>
         current
-          ? { ...current, questions: current.questions.map(updateQuestion) }
+          ? {
+              ...current,
+              overallScore,
+              questions: current.questions.map(updateQuestion),
+            }
           : current
       );
       setSessions((current) =>
         current.map((item) => ({
           ...item,
+          overallScore:
+            item.id === sessionId ? overallScore : item.overallScore,
           questions: item.questions.map(updateQuestion),
         }))
       );
@@ -501,6 +514,33 @@ export function InterviewSimulator() {
                 </div>
               )}
 
+              {session.status === "COMPLETED" && (
+                <section
+                  aria-label="Báo cáo phỏng vấn"
+                  className="mt-6 rounded-xl border border-violet-200 bg-violet-50 p-5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-violet-950">
+                        Báo cáo phỏng vấn
+                      </h3>
+                      <p className="mt-1 text-sm text-violet-800">
+                        Đánh giá cho vị trí {session.position} · cấp độ{" "}
+                        {session.level ?? "junior"}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-violet-900">
+                      {session.overallScore !== null
+                        ? `Điểm tổng: ${Number(session.overallScore).toLocaleString("vi-VN")}/100`
+                        : `Đã đánh giá ${evaluatedCount}/${session.questions.length} câu`}
+                    </p>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-violet-900">
+                    Phản hồi chi tiết cho từng câu trả lời được lưu bên dưới.
+                  </p>
+                </section>
+              )}
+
               <div className="mt-8 space-y-4">
                 {session.questions
                   .filter((question) => question.userAnswer !== null)
@@ -529,7 +569,7 @@ export function InterviewSimulator() {
                       ) : (
                         <button
                           className="mt-3 text-sm font-semibold text-violet-700 underline-offset-4 hover:underline disabled:opacity-60"
-                          disabled={evaluatingQuestionId === question.id}
+                          disabled={evaluatingQuestionId !== ""}
                           onClick={() =>
                             void evaluateAnswer(session.id, question.id)
                           }
@@ -582,7 +622,9 @@ export function InterviewSimulator() {
                       </span>
                       <span className="mt-1 block text-xs text-slate-500">
                         {item.status === "COMPLETED"
-                          ? "Đã hoàn thành"
+                          ? item.overallScore !== null
+                            ? `Đã hoàn thành · ${Number(item.overallScore).toLocaleString("vi-VN")}/100`
+                            : "Đã hoàn thành"
                           : `${item.questions.filter((question) => question.userAnswer !== null).length}/${item.questions.length} câu`}
                       </span>
                     </button>
