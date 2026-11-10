@@ -5,6 +5,12 @@
  */
 import OpenAI from "openai";
 
+import {
+  AI_QUOTA_EXCEEDED_CODE,
+  describeQuotaExceeded,
+  isQuotaExceeded,
+} from "./quota";
+
 /** Shared error class for all AI operations. */
 export class AIAnalysisError extends Error {
   constructor(
@@ -12,7 +18,10 @@ export class AIAnalysisError extends Error {
     public code:
       | "API_KEY_MISSING"
       | "AI_REQUEST_FAILED"
-      | "INVALID_RESPONSE_SCHEMA"
+      | "AI_QUOTA_EXCEEDED"
+      | "INVALID_RESPONSE_SCHEMA",
+    /** Epoch ms when a rate/quota limit resets. Only set for quota errors. */
+    public resetsAt?: number
   ) {
     super(message);
     this.name = "AIAnalysisError";
@@ -25,8 +34,11 @@ export class AICareerError extends Error {
     public code:
       | "API_KEY_MISSING"
       | "AI_REQUEST_FAILED"
+      | "AI_QUOTA_EXCEEDED"
       | "INVALID_RESPONSE_SCHEMA"
-      | "CONTENT_TOO_LONG"
+      | "CONTENT_TOO_LONG",
+    /** Epoch ms when a rate/quota limit resets. Only set for quota errors. */
+    public resetsAt?: number
   ) {
     super(message);
     this.name = "AICareerError";
@@ -89,6 +101,14 @@ export async function aiChatCompletion({
 
     return res.choices[0]?.message?.content ?? "";
   } catch (err: unknown) {
+    // A quota/rate-limit failure is not a generic request failure — it needs
+    // its own code and a reset timestamp so the API can answer 429 and the UI
+    // can tell the user when to come back.
+    if (isQuotaExceeded(err)) {
+      const quota = describeQuotaExceeded(err);
+      throw new AIAnalysisError(quota.message, AI_QUOTA_EXCEEDED_CODE, quota.resetsAt);
+    }
+
     const message = err instanceof Error ? err.message : String(err);
     throw new AIAnalysisError(
       `AI request failed: ${message}`,

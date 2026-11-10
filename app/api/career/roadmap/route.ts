@@ -10,11 +10,12 @@
 import { Prisma } from "@/app/generated/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { apiError, apiSuccess } from "@/lib/utils";
+import { apiError, apiSuccess, aiErrorResponse } from "@/lib/utils";
 import {
   generateRoadmap,
   CareerAnalyzeInputSchema,
 } from "@/lib/career";
+import { resolveCvSkills } from "@/lib/career/skill-repository";
 import { RoadmapStepUpdateSchema } from "@/lib/career/validators";
 import { NextRequest } from "next/server";
 import type { CareerAnalyzeInput } from "@/lib/career";
@@ -43,29 +44,29 @@ export async function POST(req: NextRequest) {
   const requestedCvId = parsed.data.cvId;
   let input: CareerAnalyzeInput = parsed.data;
   let cvId = requestedCvId;
+
+  // A CV is only attached when the user explicitly picked one. Without a
+  // `cvId` the current skills come from the user's own input — we never
+  // silently fall back to the most recent CV, otherwise the roadmap would
+  // describe skills the user did not choose.
   const cv = requestedCvId
     ? await prisma.cV.findFirst({
         where: { id: requestedCvId, userId: user.id, status: "ANALYZED" },
         select: { id: true, extractedText: true, analysisJson: true },
       })
-    : await prisma.cV.findFirst({
-        where: { userId: user.id, status: "ANALYZED" },
-        orderBy: { updatedAt: "desc" },
-        select: { id: true, extractedText: true, analysisJson: true },
-      });
+    : null;
+
   if (requestedCvId && !cv)
     return apiError(404, "CV_NOT_FOUND", "Analyzed CV not found or does not belong to you.");
+
   if (cv) {
     cvId = cv.id;
-    const analysis = cv.analysisJson as {
-      skills?: { technical?: string[]; soft?: string[] };
-    } | null;
+    // Skills come from the normalised `skill` ⨝ `cv_skill` tables; legacy CVs
+    // that predate the skill table fall back to their raw analysis payload.
+    const resolved = await resolveCvSkills(cv);
     input = {
       ...input,
-      currentSkills: input.currentSkills ?? {
-        technical: analysis?.skills?.technical ?? [],
-        soft: analysis?.skills?.soft ?? [],
-      },
+      currentSkills: input.currentSkills ?? resolved.skills,
       cvText: input.cvText ?? cv.extractedText ?? undefined,
     };
   }
@@ -75,9 +76,7 @@ export async function POST(req: NextRequest) {
   try {
     result = await generateRoadmap(input);
   } catch (err: unknown) {
-    const code =
-      err instanceof Error ? (err as { code?: string }).code ?? "AI_ERROR" : "AI_ERROR";
-    return apiError(500, code, (err as Error).message ?? "Roadmap generation failed.");
+    return aiErrorResponse(err, "Roadmap generation failed.");
   }
 
   // 5. Save to database
@@ -91,7 +90,7 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         cvId: cvId ?? null,
         targetRole: input.targetRole,
-        targetLevel: input.currentLevel,
+        targetLevel: input.targetLevel ?? input.currentLevel,
         currentSkills: (input.currentSkills ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         missingSkills: result.skillGap.gapSkills.map((s) => s.skill) ?? Prisma.JsonNull,
         roadmapJson: result.roadmap as unknown as Prisma.InputJsonValue,

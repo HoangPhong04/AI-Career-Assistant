@@ -10,6 +10,8 @@ import {
   type FormEvent,
 } from "react";
 
+import { QuotaNotice } from "@/components/shared/quota-notice";
+
 // 1. Định nghĩa kiểu dữ liệu kết quả phân tích
 export interface CVAnalysisData {
   id: string;
@@ -124,6 +126,8 @@ export function CVUploadForm() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [status, setStatus] = useState<StepStatus>("fetching");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** Set when the AI daily quota is exhausted — shown as a dedicated notice. */
+  const [quotaError, setQuotaError] = useState<{ message: string; resetsAt?: number } | null>(null);
   const [cvData, setCvData] = useState<CVAnalysisData | null>(null);
   const [history, setHistory] = useState<CVAnalysisData[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -257,6 +261,7 @@ export function CVUploadForm() {
     if (!file) return;
 
     setErrorMessage(null);
+    setQuotaError(null);
     setStatus("uploading");
     setScanStepIndex(0);
 
@@ -297,6 +302,17 @@ export function CVUploadForm() {
             "CV dạng scan hình ảnh không có lớp chữ để đọc. Vui lòng tải bản PDF/Word gốc.";
         } else if (analyzeJson.code === "AI_REQUEST_FAILED") {
           message = "Hệ thống AI tạm thời bận. Vui lòng thử lại sau giây lát.";
+        } else if (analyzeJson.code === "AI_QUOTA_EXCEEDED") {
+          // The AI daily budget is spent — show the friendly notice.
+          setQuotaError({
+            message:
+              analyzeJson.error?.message ??
+              "Bạn đã dùng hết lượt phân tích AI trong ngày. Vui lòng thử lại sau khi hạn mức được làm mới.",
+            resetsAt: analyzeJson.error?.resetsAt,
+          });
+          setStatus("error");
+          setErrorMessage(null);
+          return;
         }
         throw new Error(message);
       }
@@ -318,6 +334,7 @@ export function CVUploadForm() {
     setPreviewUrl(null);
     setValidationError(null);
     setErrorMessage(null);
+    setQuotaError(null);
     setStatus("idle");
     setCvData(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -354,6 +371,15 @@ export function CVUploadForm() {
           xuất kỹ năng và chấm điểm chuẩn ATS trên cùng một màn hình.
         </p>
       </div>
+
+      {/* THÔNG BÁO HẾT LƯỢT AI */}
+      {quotaError && (
+        <QuotaNotice
+          className="mb-6"
+          message={quotaError.message}
+          resetsAt={quotaError.resetsAt}
+        />
+      )}
 
       {/* THÔNG BÁO LỖI NẾU CÓ */}
       {status === "error" && errorMessage && (

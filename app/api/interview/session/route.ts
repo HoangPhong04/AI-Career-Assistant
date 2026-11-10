@@ -27,6 +27,12 @@ const interviewSessionInclude = {
 };
 
 function aiErrorResponse(error: AIAnalysisError) {
+  // A quota failure is a rate limit, not an upstream failure — answer 429
+  // and tell the user when the budget resets.
+  if (error.code === "AI_QUOTA_EXCEEDED") {
+    return apiError(429, error.code, error.message);
+  }
+
   const status = error.code === "API_KEY_MISSING" ? 503 : 502;
   return apiError(status, error.code, error.message);
 }

@@ -1,10 +1,46 @@
 import { NextResponse } from "next/server";
 
+import { formatResetCountdown } from "@/lib/ai/quota";
+
 export function apiError(status: number, code: string, message: string) {
 	return NextResponse.json(
 		{ error: { code, message } },
 		{ status },
 	);
+}
+
+/**
+ * Build the response for a failed AI call.
+ *
+ * Quota / rate-limit failures are not server bugs — the request was valid but
+ * the provider's daily budget is spent. They answer with 429 and carry the
+ * moment the budget resets so the client can tell the user when to retry.
+ *
+ * Every other failure stays a 500 with the raw message for debugging.
+ */
+export function aiErrorResponse(
+	err: unknown,
+	fallbackMessage: string,
+): NextResponse {
+	const code =
+		err instanceof Error
+			? (err as { code?: string }).code ?? "AI_ERROR"
+			: "AI_ERROR";
+
+	if (code === "AI_QUOTA_EXCEEDED") {
+		const resetsAt = (err as { resetsAt?: number }).resetsAt;
+		const countdown = formatResetCountdown(resetsAt);
+		const message = countdown
+			? `${(err as Error).message} ${countdown}`
+			: (err as Error).message || fallbackMessage;
+
+		return NextResponse.json(
+			{ error: { code, message, resetsAt } },
+			{ status: 429 },
+		);
+	}
+
+	return apiError(500, code, (err as Error).message ?? fallbackMessage);
 }
 
 export function apiSuccess<T>(

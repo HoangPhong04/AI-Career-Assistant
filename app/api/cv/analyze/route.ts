@@ -236,6 +236,11 @@ export async function POST(request: Request) {
         data: { status: "FAILED" },
       });
       if (aiError instanceof AIAnalysisError) {
+        // Quota exhaustion is a rate limit, not an upstream failure.
+        if (aiError.code === "AI_QUOTA_EXCEEDED") {
+          return apiError(429, aiError.code, aiError.message);
+        }
+
         return apiError(502, aiError.code, aiError.message);
       }
       throw aiError;
@@ -244,18 +249,45 @@ export async function POST(request: Request) {
     // 3. Chuẩn bị dữ liệu
     const raw = analysisResult as unknown as Record<string, unknown>;
 
+    // Skills are split by category so the `skill` table can distinguish
+    // technical from soft skills for the Career Roadmap module.
+    // The first spelling of a duplicated skill wins.
+    const collectNames = (values: unknown): string[] => {
+      if (!Array.isArray(values)) return [];
+
+      const seen = new Map<string, string>();
+      for (const entry of values) {
+        if (typeof entry !== "string") continue;
+        const name = entry.trim().slice(0, 100);
+        if (!name) continue;
+
+        const key = name.toLowerCase();
+        if (!seen.has(key)) seen.set(key, name);
+      }
+      return Array.from(seen.values());
+    };
+
+    const technicalNames = collectNames(analysisResult.skills?.technical);
+    const softNames = collectNames(analysisResult.skills?.soft);
+
+    // A skill can appear in both lists; technical wins as the primary bucket.
+    const technicalLookup = new Set(technicalNames.map((s) => s.toLowerCase()));
     const skillNames = Array.from(
       new Map(
         [
-          ...(analysisResult.skills?.technical ?? []),
-          ...(analysisResult.skills?.soft ?? []),
-        ]
-          .filter((s): s is string => typeof s === "string")
-          .map((s) => s.trim().slice(0, 100))
-          .filter(Boolean)
-          .map((s) => [s.toLowerCase(), s] as const)
+          ...technicalNames,
+          ...softNames.filter((s) => !technicalLookup.has(s.toLowerCase())),
+        ].map((s) => [s.toLowerCase(), s] as const)
       ).values()
     );
+
+    const categoryByName = new Map<string, string>();
+    for (const name of technicalNames) categoryByName.set(name.toLowerCase(), "technical");
+    for (const name of softNames) {
+      if (!categoryByName.has(name.toLowerCase())) {
+        categoryByName.set(name.toLowerCase(), "soft");
+      }
+    }
 
     const educations = mapEducations(raw.education, currentUser.id, cv.id);
     const experiences = mapExperiences(
@@ -273,11 +305,19 @@ export async function POST(request: Request) {
 
         const skillIds: string[] = [];
         for (const name of skillNames) {
+          const category = categoryByName.get(name.toLowerCase()) ?? "technical";
           let skill = await tx.skill.findFirst({
             where: { name: { equals: name, mode: "insensitive" } },
           });
           if (!skill) {
-            skill = await tx.skill.create({ data: { name } });
+            skill = await tx.skill.create({ data: { name, category } });
+          } else if (skill.category !== category) {
+            // Keep the category in sync so the Career module can tell
+            // technical and soft skills apart.
+            skill = await tx.skill.update({
+              where: { id: skill.id },
+              data: { category },
+            });
           }
           skillIds.push(skill.id);
         }

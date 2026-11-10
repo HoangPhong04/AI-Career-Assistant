@@ -167,6 +167,6 @@ storage/cvs/*
 aca-images.tar
 *.tar
 
-docs/timeline.mdaca-images.tar
+docs/timeline.md
 *.tar
 storage/cvs/

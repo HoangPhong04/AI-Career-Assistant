@@ -2,6 +2,9 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
+import { readQuotaError } from "@/lib/ai/quota-client";
+import { QuotaNotice } from "@/components/shared/quota-notice";
+
 type InterviewQuestion = {
   id: string;
   orderIndex: number;
@@ -22,7 +25,9 @@ type InterviewSession = {
   questions: InterviewQuestion[];
 };
 
-type ApiError = { error?: { message?: string } };
+type ApiError = {
+  error?: { code?: string; message?: string; resetsAt?: number };
+};
 type SessionResponse = { data?: { session: InterviewSession } };
 
 const LEVELS = ["fresher", "junior", "mid", "senior"] as const;
@@ -35,6 +40,19 @@ const TYPES = [
 async function readError(response: Response): Promise<string> {
   const body = (await response.json().catch(() => ({}))) as ApiError;
   return body.error?.message ?? "Đã xảy ra lỗi. Vui lòng thử lại.";
+}
+
+/**
+ * Read a quota failure out of a failed response.
+ *
+ * Returns null when the failure is not a quota problem, so callers can fall
+ * back to the generic error path.
+ */
+async function readQuotaFailure(
+  response: Response
+): Promise<{ message: string; resetsAt?: number } | null> {
+  const body = await response.json().catch(() => ({}));
+  return readQuotaError(body);
 }
 
 function formatDate(value: string): string {
@@ -58,6 +76,11 @@ export function InterviewSimulator() {
   const [evaluatingQuestionId, setEvaluatingQuestionId] = useState("");
   const [deletingSessionId, setDeletingSessionId] = useState("");
   const [error, setError] = useState("");
+  /** Set when the AI daily quota is exhausted — shown as a dedicated notice. */
+  const [quotaError, setQuotaError] = useState<{
+    message: string;
+    resetsAt?: number;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -103,6 +126,7 @@ export function InterviewSimulator() {
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setQuotaError(null);
     setCreating(true);
 
     try {
@@ -116,7 +140,15 @@ export function InterviewSimulator() {
           questionCount: 5,
         }),
       });
-      if (!response.ok) throw new Error(await readError(response));
+
+      if (!response.ok) {
+        const quota = await readQuotaFailure(response);
+        if (quota) {
+          setQuotaError(quota);
+          return;
+        }
+        throw new Error(await readError(response));
+      }
 
       const body = (await response.json()) as SessionResponse;
       if (!body.data?.session) throw new Error("Máy chủ không trả về buổi phỏng vấn.");
@@ -143,6 +175,7 @@ export function InterviewSimulator() {
     questionId: string
   ): Promise<void> {
     setError("");
+    setQuotaError(null);
     setEvaluatingQuestionId(questionId);
     try {
       const response = await fetch("/api/interview/evaluate", {
@@ -150,7 +183,15 @@ export function InterviewSimulator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, questionId }),
       });
-      if (!response.ok) throw new Error(await readError(response));
+
+      if (!response.ok) {
+        const quota = await readQuotaFailure(response);
+        if (quota) {
+          setQuotaError(quota);
+          return;
+        }
+        throw new Error(await readError(response));
+      }
 
       const body = (await response.json()) as {
         data?: { evaluation: { feedback: string; score: number | string } };
@@ -291,6 +332,14 @@ export function InterviewSimulator() {
           phản hồi sau mỗi câu.
         </p>
       </div>
+
+      {quotaError && (
+        <QuotaNotice
+          className="mb-6"
+          message={quotaError.message}
+          resetsAt={quotaError.resetsAt}
+        />
+      )}
 
       {error && (
         <p
