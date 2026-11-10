@@ -47,7 +47,8 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ data: { user } });
-  } catch {
+  } catch (error) {
+    console.error("[profile] Failed to update profile:", error);
     return apiError(500, "INTERNAL_ERROR", "Unable to update the profile");
   }
 }

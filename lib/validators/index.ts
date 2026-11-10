@@ -19,9 +19,28 @@ export const registerSchema = loginSchema.extend({
 export const updateProfileSchema = z
 	.object({
 		fullName: z.string().trim().min(1).max(100).nullable().optional(),
-		avatarUrl: z.string().trim().url().max(255).nullable().optional(),
 	})
 	.strict()
 	.refine((profile) => Object.keys(profile).length > 0, {
 		message: "At least one profile field is required",
+	});
+
+export const changePasswordSchema = z
+	.object({
+		currentPassword: z
+			.string()
+			.min(1)
+			.refine((password) => new TextEncoder().encode(password).length <= 72, {
+				message: "Current password must not exceed 72 UTF-8 bytes",
+			}),
+		newPassword: passwordSchema,
+		confirmPassword: passwordSchema,
+	})
+	.refine((passwords) => passwords.newPassword === passwords.confirmPassword, {
+		message: "New password and confirmation do not match",
+		path: ["confirmPassword"],
+	})
+	.refine((passwords) => passwords.newPassword !== passwords.currentPassword, {
+		message: "New password must be different from the current password",
+		path: ["newPassword"],
 	});

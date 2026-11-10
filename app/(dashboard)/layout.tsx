@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { DashboardNavigation } from "@/components/layout/dashboard-navigation";
+import { UserAvatar } from "@/components/profile/user-avatar";
 import { getCurrentUser } from "@/lib/auth";
 
 export default async function ProtectedDashboardLayout({
@@ -26,9 +27,17 @@ export default async function ProtectedDashboardLayout({
           </Link>
           <DashboardNavigation />
           <div className="flex shrink-0 items-center gap-3 border-l border-slate-200 pl-3">
-            <span className="hidden max-w-40 truncate text-sm text-slate-500 lg:inline" title={user.email}>
-              {user.fullName || user.email}
-            </span>
+            <Link
+              aria-label="Mở hồ sơ cá nhân"
+              className="flex min-w-0 items-center gap-2 rounded-xl p-1.5 transition hover:bg-slate-100"
+              href="/profile"
+              title={user.fullName || user.email}
+            >
+              <UserAvatar name={user.fullName || user.email} size="small" src={user.avatarUrl} />
+              <span className="max-w-24 truncate text-sm font-medium text-slate-700 sm:max-w-40">
+                {user.fullName || user.email}
+              </span>
+            </Link>
             <LogoutButton />
           </div>
         </div>
