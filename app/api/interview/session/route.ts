@@ -27,6 +27,12 @@ const interviewSessionInclude = {
 };
 
 function aiErrorResponse(error: AIAnalysisError) {
+  // A quota failure is a rate limit, not an upstream failure — answer 429
+  // and tell the user when the budget resets.
+  if (error.code === "AI_QUOTA_EXCEEDED") {
+    return apiError(429, error.code, error.message);
+  }
+
   const status = error.code === "API_KEY_MISSING" ? 503 : 502;
   return apiError(status, error.code, error.message);
 }
@@ -57,6 +63,31 @@ export async function GET(request: NextRequest) {
     take: 10,
   });
   return apiSuccess({ sessions });
+}
+
+export async function DELETE(request: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user)
+    return apiError(401, "UNAUTHENTICATED", "Please sign in to continue");
+
+  const sessionId = request.nextUrl.searchParams.get("sessionId");
+  if (!sessionId)
+    return apiError(400, "SESSION_ID_REQUIRED", "A sessionId is required.");
+  if (!InterviewSessionIdSchema.safeParse(sessionId).success)
+    return apiError(400, "INVALID_SESSION_ID", "The sessionId must be a UUID.");
+
+  try {
+    const deleted = await prisma.interviewSession.deleteMany({
+      where: { id: sessionId, userId: user.id },
+    });
+    if (deleted.count === 0)
+      return apiError(404, "SESSION_NOT_FOUND", "Interview session not found.");
+
+    return apiSuccess({ deleted: true });
+  } catch (error) {
+    console.error("[interview/session] Failed to delete interview session:", error);
+    return apiError(500, "SESSION_DELETION_FAILED", "Unable to delete the interview session.");
+  }
 }
 
 export async function POST(request: NextRequest) {

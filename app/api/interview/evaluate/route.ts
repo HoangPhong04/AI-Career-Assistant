@@ -80,6 +80,11 @@ export async function POST(request: NextRequest) {
     return apiSuccess({ evaluation });
   } catch (error) {
     if (error instanceof AIAnalysisError) {
+      // Quota exhaustion is a rate limit, not an upstream failure.
+      if (error.code === "AI_QUOTA_EXCEEDED") {
+        return apiError(429, error.code, error.message);
+      }
+
       const status = error.code === "API_KEY_MISSING" ? 503 : 502;
       return apiError(status, error.code, error.message);
     }

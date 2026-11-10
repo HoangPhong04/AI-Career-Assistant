@@ -214,6 +214,24 @@ http://localhost:3000
 
 ## 11. Build production
 
+Chạy test:
+
+```bash
+npm test
+```
+
+Test integration (cần database, tự tạo và dọn dữ liệu test):
+
+```bash
+npm run test:integration
+```
+
+Chạy cả hai:
+
+```bash
+npm run test:all
+```
+
 Kiểm tra lint:
 
 ```bash
@@ -507,6 +525,8 @@ Trước khi Pull Request:
 npm install
 npm run db:generate
 npm run db:test
+npm test
+npm run test:integration
 npm run lint
 npm run build
 ```
@@ -519,6 +539,8 @@ Checklist:
 - [ ] Không commit `.env`.
 - [ ] Không có lỗi TypeScript.
 - [ ] Lint pass.
+- [ ] Unit test pass.
+- [ ] Integration test pass.
 - [ ] Build pass.
 - [ ] API có xử lý lỗi.
 - [ ] UI có loading/error state.

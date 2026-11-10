@@ -160,4 +160,13 @@ CLAUDE.md
 uploads/*
 !uploads/.gitkeep
 
+# Uploaded CV files
+storage/cvs/*
+!storage/cvs/.gitkeep
+
+aca-images.tar
+*.tar
+
 docs/timeline.md
+*.tar
+storage/cvs/

@@ -10,6 +10,8 @@ import {
   type FormEvent,
 } from "react";
 
+import { QuotaNotice } from "@/components/shared/quota-notice";
+
 // 1. Định nghĩa kiểu dữ liệu kết quả phân tích
 export interface CVAnalysisData {
   id: string;
@@ -26,6 +28,8 @@ export interface CVAnalysisData {
       phone?: string | null;
       summary?: string | null;
     };
+    experienceLevel?: "fresher" | "junior" | "mid" | "senior" | "lead" | null;
+    yearsOfExperience?: number | null;
     skills?: {
       technical: string[];
       soft: string[];
@@ -42,6 +46,17 @@ export interface CVAnalysisData {
       major?: string;
       graduationYear?: string;
     }>;
+    certifications?: Array<{
+      name: string;
+      issuer?: string;
+      year?: string;
+    }>;
+    projects?: Array<{
+      name: string;
+      description?: string;
+      technologies: string[];
+      url?: string;
+    }>;
     strengths?: string[];
     improvements?: string[];
     score?: number;
@@ -49,6 +64,27 @@ export interface CVAnalysisData {
   } | null;
   createdAt: string;
 }
+
+// Helper: nhãn hiển thị cho experienceLevel
+const LEVEL_LABEL: Record<string, { label: string; color: string }> = {
+  fresher: { label: "Fresher", color: "bg-slate-100 text-slate-700" },
+  junior: {
+    label: "Junior",
+    color: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
+  },
+  mid: {
+    label: "Mid-level",
+    color: "bg-violet-50 text-violet-700 ring-1 ring-violet-200",
+  },
+  senior: {
+    label: "Senior",
+    color: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  },
+  lead: {
+    label: "Lead / Principal",
+    color: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+  },
+};
 
 type StepStatus =
   | "idle"
@@ -90,6 +126,8 @@ export function CVUploadForm() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [status, setStatus] = useState<StepStatus>("fetching");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** Set when the AI daily quota is exhausted — shown as a dedicated notice. */
+  const [quotaError, setQuotaError] = useState<{ message: string; resetsAt?: number } | null>(null);
   const [cvData, setCvData] = useState<CVAnalysisData | null>(null);
   const [history, setHistory] = useState<CVAnalysisData[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -223,6 +261,7 @@ export function CVUploadForm() {
     if (!file) return;
 
     setErrorMessage(null);
+    setQuotaError(null);
     setStatus("uploading");
     setScanStepIndex(0);
 
@@ -264,6 +303,17 @@ export function CVUploadForm() {
         } else if (analyzeJson.error?.code === "AI_REQUEST_FAILED") {
           message =
             "Hệ thống AI tạm thời bận. Vui lòng thử lại sau giây lát.";
+        } else if (analyzeJson.error?.code === "AI_QUOTA_EXCEEDED") {
+          // The AI daily budget is spent — show the friendly notice.
+          setQuotaError({
+            message:
+              analyzeJson.error?.message ??
+              "Bạn đã dùng hết lượt phân tích AI trong ngày. Vui lòng thử lại sau khi hạn mức được làm mới.",
+            resetsAt: analyzeJson.error?.resetsAt,
+          });
+          setStatus("error");
+          setErrorMessage(null);
+          return;
         }
         throw new Error(message);
       }
@@ -285,6 +335,7 @@ export function CVUploadForm() {
     setPreviewUrl(null);
     setValidationError(null);
     setErrorMessage(null);
+    setQuotaError(null);
     setStatus("idle");
     setCvData(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -317,10 +368,19 @@ export function CVUploadForm() {
           CV Analyzer
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Tải lên CV (PDF hoặc DOCX) để AI tự động quét hồ sơ trực quan, trích xuất
-          kỹ năng và chấm điểm chuẩn ATS trên cùng một màn hình.
+          Tải lên CV (PDF hoặc DOCX) để AI tự động quét hồ sơ trực quan, trích
+          xuất kỹ năng và chấm điểm chuẩn ATS trên cùng một màn hình.
         </p>
       </div>
+
+      {/* THÔNG BÁO HẾT LƯỢT AI */}
+      {quotaError && (
+        <QuotaNotice
+          className="mb-6"
+          message={quotaError.message}
+          resetsAt={quotaError.resetsAt}
+        />
+      )}
 
       {/* THÔNG BÁO LỖI NẾU CÓ */}
       {status === "error" && errorMessage && (
@@ -353,7 +413,9 @@ export function CVUploadForm() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-950">
-                  {cvData ? "Tải lên bản CV khác để quét" : "Tải lên CV của bạn"}
+                  {cvData
+                    ? "Tải lên bản CV khác để quét"
+                    : "Tải lên CV của bạn"}
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
                   Hỗ trợ định dạng PDF hoặc DOCX (tối đa 5 MB).
@@ -503,8 +565,8 @@ export function CVUploadForm() {
                 Chưa có dữ liệu phân tích
               </h3>
               <p className="mt-1 text-sm text-slate-500">
-                Hãy tải lên bản CV đầu tiên của bạn ở trên để kích hoạt bộ quét hồ sơ
-                trực quan và nhận kết quả phân tích.
+                Hãy tải lên bản CV đầu tiên của bạn ở trên để kích hoạt bộ quét
+                hồ sơ trực quan và nhận kết quả phân tích.
               </p>
             </div>
           )}
@@ -599,7 +661,8 @@ export function CVUploadForm() {
                             <div className="flex items-center gap-2.5">
                               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700">
                                 {(
-                                  cvData?.analysisJson?.personalInfo?.fullName ||
+                                  cvData?.analysisJson?.personalInfo
+                                    ?.fullName ||
                                   file?.name ||
                                   "CV"
                                 )
@@ -608,7 +671,8 @@ export function CVUploadForm() {
                               </div>
                               <div className="min-w-0">
                                 <h4 className="truncate text-xs font-bold text-slate-900">
-                                  {cvData?.analysisJson?.personalInfo?.fullName ||
+                                  {cvData?.analysisJson?.personalInfo
+                                    ?.fullName ||
                                     file?.name ||
                                     "Hồ sơ ứng viên"}
                                 </h4>
@@ -697,10 +761,34 @@ export function CVUploadForm() {
                   <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-                          ĐÃ QUÉT & PHÂN TÍCH
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                            ĐÃ QUÉT & PHÂN TÍCH
+                          </span>
+                          {cvData?.analysisJson?.experienceLevel && (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                                LEVEL_LABEL[cvData.analysisJson.experienceLevel]
+                                  ?.color || "bg-slate-100 text-slate-700"
+                              }`}
+                            >
+                              Cấp độ:{" "}
+                              {LEVEL_LABEL[cvData.analysisJson.experienceLevel]
+                                ?.label || cvData.analysisJson.experienceLevel}
+                            </span>
+                          )}
+                          {cvData?.analysisJson?.yearsOfExperience !==
+                            undefined &&
+                            cvData?.analysisJson?.yearsOfExperience !==
+                              null && (
+                              <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-indigo-200/60">
+                                {cvData.analysisJson.yearsOfExperience === 0
+                                  ? "Chưa có kinh nghiệm"
+                                  : `${cvData.analysisJson.yearsOfExperience} năm kinh nghiệm`}
+                              </span>
+                            )}
+                        </div>
                         <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-950">
                           {cvData?.analysisJson?.personalInfo?.fullName ||
                             cvData?.originalName ||
@@ -714,6 +802,21 @@ export function CVUploadForm() {
                             Tệp: {cvData.originalName} • Cập nhật:{" "}
                             {formatDate(cvData.createdAt)}
                           </p>
+                        )}
+                        {(cvData?.analysisJson?.personalInfo?.email ||
+                          cvData?.analysisJson?.personalInfo?.phone) && (
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                            {cvData.analysisJson.personalInfo.email && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-0.5 ring-1 ring-slate-200/60">
+                                ✉️ {cvData.analysisJson.personalInfo.email}
+                              </span>
+                            )}
+                            {cvData.analysisJson.personalInfo.phone && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-0.5 ring-1 ring-slate-200/60">
+                                📞 {cvData.analysisJson.personalInfo.phone}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
 
@@ -807,14 +910,16 @@ export function CVUploadForm() {
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {cvData?.analysisJson?.skills?.soft &&
                           cvData.analysisJson.skills.soft.length > 0 ? (
-                            cvData.analysisJson.skills.soft.map((skill, idx) => (
-                              <span
-                                key={idx}
-                                className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
-                              >
-                                {skill}
-                              </span>
-                            ))
+                            cvData.analysisJson.skills.soft.map(
+                              (skill, idx) => (
+                                <span
+                                  key={idx}
+                                  className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
+                                >
+                                  {skill}
+                                </span>
+                              )
+                            )
                           ) : (
                             <span className="text-xs text-slate-400">
                               {isScanning
@@ -877,14 +982,19 @@ export function CVUploadForm() {
                             <span>💡</span> Gợi ý hoàn thiện hồ sơ
                           </h4>
                           <ul className="mt-3.5 space-y-2 text-xs leading-relaxed text-amber-900">
-                            {cvData.analysisJson.improvements?.map((item, idx) => (
-                              <li key={idx} className="flex items-start gap-2">
-                                <span className="font-bold text-amber-600">
-                                  •
-                                </span>
-                                <span>{item}</span>
-                              </li>
-                            ))}
+                            {cvData.analysisJson.improvements?.map(
+                              (item, idx) => (
+                                <li
+                                  key={idx}
+                                  className="flex items-start gap-2"
+                                >
+                                  <span className="font-bold text-amber-600">
+                                    •
+                                  </span>
+                                  <span>{item}</span>
+                                </li>
+                              )
+                            )}
                           </ul>
                         </div>
                       </div>
@@ -897,42 +1007,164 @@ export function CVUploadForm() {
                               Lịch sử kinh nghiệm
                             </h3>
                             <div className="mt-4 divide-y divide-slate-100">
-                              {cvData.analysisJson.experience.map((exp, idx) => (
+                              {cvData.analysisJson.experience.map(
+                                (exp, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="py-3.5 first:pt-1 last:pb-0"
+                                  >
+                                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                      <h4 className="text-sm font-bold text-slate-900">
+                                        {exp.role}
+                                      </h4>
+                                      {exp.duration && (
+                                        <span className="text-xs text-slate-400">
+                                          {exp.duration}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="mt-0.5 text-xs font-semibold text-violet-700">
+                                      {exp.company}
+                                    </p>
+                                    {exp.highlights &&
+                                      exp.highlights.length > 0 && (
+                                        <ul className="mt-2 space-y-1 text-xs leading-relaxed text-slate-600">
+                                          {exp.highlights.map((h, hIdx) => (
+                                            <li
+                                              key={hIdx}
+                                              className="flex items-start gap-2"
+                                            >
+                                              <span className="text-slate-400">
+                                                -
+                                              </span>
+                                              <span>{h}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                      {/* DỰ ÁN TIÊU BIỂU */}
+                      {cvData.analysisJson.projects &&
+                        cvData.analysisJson.projects.length > 0 && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                            <h3 className="flex items-center gap-2 text-base font-semibold text-slate-950">
+                              <span>🚀</span> Dự án tiêu biểu
+                            </h3>
+                            <div className="mt-4 divide-y divide-slate-100">
+                              {cvData.analysisJson.projects.map((proj, idx) => (
                                 <div
                                   key={idx}
                                   className="py-3.5 first:pt-1 last:pb-0"
                                 >
                                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                                     <h4 className="text-sm font-bold text-slate-900">
-                                      {exp.role}
+                                      {proj.name}
                                     </h4>
-                                    {exp.duration && (
+                                    {proj.url && (
+                                      <a
+                                        href={
+                                          proj.url.startsWith("http")
+                                            ? proj.url
+                                            : `https://${proj.url}`
+                                        }
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-xs font-semibold text-violet-700 hover:underline"
+                                      >
+                                        Xem dự án ↗
+                                      </a>
+                                    )}
+                                  </div>
+                                  {proj.description && (
+                                    <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                                      {proj.description}
+                                    </p>
+                                  )}
+                                  {proj.technologies &&
+                                    proj.technologies.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {proj.technologies.map((tech, tIdx) => (
+                                          <span
+                                            key={tIdx}
+                                            className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700"
+                                          >
+                                            {tech}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                      {/* HỌC VẤN & ĐÀO TẠO */}
+                      {cvData.analysisJson.education &&
+                        cvData.analysisJson.education.length > 0 && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                            <h3 className="flex items-center gap-2 text-base font-semibold text-slate-950">
+                              <span>🎓</span> Học vấn & Đào tạo
+                            </h3>
+                            <div className="mt-4 divide-y divide-slate-100">
+                              {cvData.analysisJson.education.map((edu, idx) => (
+                                <div
+                                  key={idx}
+                                  className="py-3.5 first:pt-1 last:pb-0"
+                                >
+                                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                    <h4 className="text-sm font-bold text-slate-900">
+                                      {edu.institution}
+                                    </h4>
+                                    {edu.graduationYear && (
                                       <span className="text-xs text-slate-400">
-                                        {exp.duration}
+                                        {edu.graduationYear}
                                       </span>
                                     )}
                                   </div>
                                   <p className="mt-0.5 text-xs font-semibold text-violet-700">
-                                    {exp.company}
+                                    {edu.degree ? `${edu.degree} - ` : ""}
+                                    {edu.major || ""}
                                   </p>
-                                  {exp.highlights &&
-                                    exp.highlights.length > 0 && (
-                                      <ul className="mt-2 space-y-1 text-xs leading-relaxed text-slate-600">
-                                        {exp.highlights.map((h, hIdx) => (
-                                          <li
-                                            key={hIdx}
-                                            className="flex items-start gap-2"
-                                          >
-                                            <span className="text-slate-400">
-                                              -
-                                            </span>
-                                            <span>{h}</span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    )}
                                 </div>
                               ))}
+                            </div>
+                          </div>
+                        )}
+
+                      {/* CHỨNG CHỈ CHUYÊN MÔN */}
+                      {cvData.analysisJson.certifications &&
+                        cvData.analysisJson.certifications.length > 0 && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                            <h3 className="flex items-center gap-2 text-base font-semibold text-slate-950">
+                              <span>📜</span> Chứng chỉ chuyên môn
+                            </h3>
+                            <div className="mt-3.5 grid gap-3 sm:grid-cols-2">
+                              {cvData.analysisJson.certifications.map(
+                                (cert, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5"
+                                  >
+                                    <h4 className="text-xs font-bold text-slate-900">
+                                      {cert.name}
+                                    </h4>
+                                    {(cert.issuer || cert.year) && (
+                                      <p className="mt-1 text-[11px] text-slate-500">
+                                        {cert.issuer}
+                                        {cert.issuer && cert.year ? " • " : ""}
+                                        {cert.year}
+                                      </p>
+                                    )}
+                                  </div>
+                                )
+                              )}
                             </div>
                           </div>
                         )}
@@ -1059,8 +1291,8 @@ export function CVUploadForm() {
                       <>Thu gọn danh sách ▲</>
                     ) : (
                       <>
-                        Xem thêm {history.length - VISIBLE_HISTORY_COUNT} CV khác
-                        ▼
+                        Xem thêm {history.length - VISIBLE_HISTORY_COUNT} CV
+                        khác ▼
                       </>
                     )}
                   </button>
@@ -1096,8 +1328,8 @@ export function CVUploadForm() {
               <li className="flex items-start gap-2">
                 <span className="font-bold text-violet-600">•</span>
                 <span>
-                  Ưu tiên file <strong>PDF dạng chữ gốc</strong> (không scan hình
-                  ảnh) để AI đọc dữ liệu trọn vẹn.
+                  Ưu tiên file <strong>PDF dạng chữ gốc</strong> (không scan
+                  hình ảnh) để AI đọc dữ liệu trọn vẹn.
                 </span>
               </li>
             </ul>

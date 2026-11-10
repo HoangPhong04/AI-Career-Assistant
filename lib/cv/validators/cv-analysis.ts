@@ -18,6 +18,7 @@ export const CVAnalysisResultSchema = z.object({
     phone: z.string().nullable().optional(),
     summary: z.string().nullable().optional(),
   }),
+
   skills: z.object({
     technical: z
       .array(z.string())
@@ -36,6 +37,10 @@ export const CVAnalysisResultSchema = z.object({
         .describe("Key achievements or responsibilities"),
     })
   ),
+  experienceLevel: z.enum(["intern", "fresher", "junior", "middle", "senior"]),
+
+  yearsOfExperience: z.number().min(0).nullable(),
+
   education: z
     .array(
       z.object({
@@ -47,6 +52,23 @@ export const CVAnalysisResultSchema = z.object({
     )
     .optional()
     .default([]),
+  certifications: z
+    .array(
+      z.object({
+        name: z.string(),
+        issuer: z.string(),
+        year: z.string().nullable().optional(),
+      })
+    )
+    .default([]),
+  projects: z.array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+      technologies: z.array(z.string()),
+      url: z.string().nullable(),
+    })
+  ),
   strengths: z
     .array(z.string())
     .describe("Top 3-5 strongest highlights of the CV"),

@@ -2,6 +2,9 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
+import { readQuotaError } from "@/lib/ai/quota-client";
+import { QuotaNotice } from "@/components/shared/quota-notice";
+
 type InterviewQuestion = {
   id: string;
   orderIndex: number;
@@ -22,7 +25,9 @@ type InterviewSession = {
   questions: InterviewQuestion[];
 };
 
-type ApiError = { error?: { message?: string } };
+type ApiError = {
+  error?: { code?: string; message?: string; resetsAt?: number };
+};
 type SessionResponse = { data?: { session: InterviewSession } };
 
 const LEVELS = ["fresher", "junior", "mid", "senior"] as const;
@@ -35,6 +40,19 @@ const TYPES = [
 async function readError(response: Response): Promise<string> {
   const body = (await response.json().catch(() => ({}))) as ApiError;
   return body.error?.message ?? "Đã xảy ra lỗi. Vui lòng thử lại.";
+}
+
+/**
+ * Read a quota failure out of a failed response.
+ *
+ * Returns null when the failure is not a quota problem, so callers can fall
+ * back to the generic error path.
+ */
+async function readQuotaFailure(
+  response: Response
+): Promise<{ message: string; resetsAt?: number } | null> {
+  const body = await response.json().catch(() => ({}));
+  return readQuotaError(body);
 }
 
 function formatDate(value: string): string {
@@ -56,7 +74,13 @@ export function InterviewSimulator() {
   const [creating, setCreating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [evaluatingQuestionId, setEvaluatingQuestionId] = useState("");
+  const [deletingSessionId, setDeletingSessionId] = useState("");
   const [error, setError] = useState("");
+  /** Set when the AI daily quota is exhausted — shown as a dedicated notice. */
+  const [quotaError, setQuotaError] = useState<{
+    message: string;
+    resetsAt?: number;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -102,6 +126,7 @@ export function InterviewSimulator() {
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setQuotaError(null);
     setCreating(true);
 
     try {
@@ -115,7 +140,15 @@ export function InterviewSimulator() {
           questionCount: 5,
         }),
       });
-      if (!response.ok) throw new Error(await readError(response));
+
+      if (!response.ok) {
+        const quota = await readQuotaFailure(response);
+        if (quota) {
+          setQuotaError(quota);
+          return;
+        }
+        throw new Error(await readError(response));
+      }
 
       const body = (await response.json()) as SessionResponse;
       if (!body.data?.session) throw new Error("Máy chủ không trả về buổi phỏng vấn.");
@@ -142,6 +175,7 @@ export function InterviewSimulator() {
     questionId: string
   ): Promise<void> {
     setError("");
+    setQuotaError(null);
     setEvaluatingQuestionId(questionId);
     try {
       const response = await fetch("/api/interview/evaluate", {
@@ -149,7 +183,15 @@ export function InterviewSimulator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, questionId }),
       });
-      if (!response.ok) throw new Error(await readError(response));
+
+      if (!response.ok) {
+        const quota = await readQuotaFailure(response);
+        if (quota) {
+          setQuotaError(quota);
+          return;
+        }
+        throw new Error(await readError(response));
+      }
 
       const body = (await response.json()) as {
         data?: { evaluation: { feedback: string; score: number | string } };
@@ -229,6 +271,45 @@ export function InterviewSimulator() {
     setError("");
   }
 
+  async function deleteSession(selected: InterviewSession) {
+    if (
+      !window.confirm(
+        `Bạn có chắc muốn xóa buổi phỏng vấn "${selected.position}"? Hành động này không thể hoàn tác.`
+      )
+    ) {
+      return;
+    }
+
+    setError("");
+    setDeletingSessionId(selected.id);
+    try {
+      const response = await fetch(
+        `/api/interview/session?sessionId=${encodeURIComponent(selected.id)}`,
+        { method: "DELETE" }
+      );
+      if (!response.ok) throw new Error(await readError(response));
+
+      const remainingSessions = sessions.filter(
+        (item) => item.id !== selected.id
+      );
+      setSessions(remainingSessions);
+      if (session?.id === selected.id) {
+        setSession(
+          remainingSessions.find((item) => item.status !== "COMPLETED") ?? null
+        );
+        setAnswer("");
+      }
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Không thể xóa buổi phỏng vấn."
+      );
+    } finally {
+      setDeletingSessionId("");
+    }
+  }
+
   if (loading) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10" aria-busy="true">
@@ -251,6 +332,14 @@ export function InterviewSimulator() {
           phản hồi sau mỗi câu.
         </p>
       </div>
+
+      {quotaError && (
+        <QuotaNotice
+          className="mb-6"
+          message={quotaError.message}
+          resetsAt={quotaError.resetsAt}
+        />
+      )}
 
       {error && (
         <p
@@ -477,10 +566,10 @@ export function InterviewSimulator() {
             {sessions.length ? (
               <ul className="mt-4 space-y-2">
                 {sessions.map((item) => (
-                  <li key={item.id}>
+                  <li className="flex items-center gap-2" key={item.id}>
                     <button
                       aria-current={session?.id === item.id ? "true" : undefined}
-                      className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                      className={`min-w-0 flex-1 rounded-xl border px-3 py-3 text-left transition ${
                         session?.id === item.id
                           ? "border-violet-300 bg-violet-50"
                           : "border-slate-100 hover:bg-slate-50"
@@ -496,6 +585,15 @@ export function InterviewSimulator() {
                           ? "Đã hoàn thành"
                           : `${item.questions.filter((question) => question.userAnswer !== null).length}/${item.questions.length} câu`}
                       </span>
+                    </button>
+                    <button
+                      aria-label={`Xóa buổi phỏng vấn ${item.position}`}
+                      className="shrink-0 rounded-lg px-2 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={deletingSessionId !== ""}
+                      onClick={() => void deleteSession(item)}
+                      type="button"
+                    >
+                      {deletingSessionId === item.id ? "Đang xóa..." : "Xóa"}
                     </button>
                   </li>
                 ))}
