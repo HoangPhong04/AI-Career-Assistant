@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 // would pull Node-only modules into the browser bundle.
 import { nextStepStatus, summarizeProgress } from "@/lib/career/progress";
 import type { CareerAnalyzeResult } from "@/lib/career/validators";
+import { careerLevelLabel, IMPORTANCE_LABEL, resourceTypeLabel } from "@/lib/career/labels";
 
 type Step = {
   id: string;
@@ -80,7 +81,7 @@ export function SavedRoadmapDetail({
           {roadmap.targetRole}
         </h1>
         <p className="mt-2 text-sm text-neutral-500">
-          Cấp bậc hiện tại: {roadmap.targetLevel}
+          Cấp bậc hiện tại: {careerLevelLabel(roadmap.targetLevel)}
           {roadmap.roadmap.estimatedMonths &&
             ` · Thời gian dự kiến: ${roadmap.roadmap.estimatedMonths} tháng`}
         </p>
@@ -101,7 +102,7 @@ export function SavedRoadmapDetail({
       </section>
 
       <section className="mt-6 rounded-xl border border-neutral-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-neutral-900">Phân tích Skill Gap</h2>
+        <h2 className="text-lg font-semibold text-neutral-900">Phân tích khoảng cách kỹ năng</h2>
         <p className="mt-2 text-sm leading-relaxed text-neutral-600">
           {roadmap.skillGap.gapSummary}
         </p>
@@ -134,7 +135,9 @@ export function SavedRoadmapDetail({
             <article className="rounded-lg border border-neutral-200 p-3" key={skill.skill}>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="font-medium text-neutral-900">{skill.skill}</h3>
-                <span className="text-xs text-neutral-500">{skill.importance}</span>
+                <span className="text-xs text-neutral-500">
+                  {IMPORTANCE_LABEL[skill.importance] ?? skill.importance}
+                </span>
               </div>
               {skill.reason && <p className="mt-1 text-sm text-neutral-600">{skill.reason}</p>}
             </article>
@@ -183,9 +186,13 @@ export function SavedRoadmapDetail({
                             <li key={`${task.title}-${resource.title}`}>
                               {resource.url ? (
                                 <a className="text-emerald-800 underline" href={resource.url} rel="noreferrer noopener" target="_blank">
-                                  {resource.title}
+                                  {resourceTypeLabel(resource.type)}: {resource.title}
                                 </a>
-                              ) : resource.title}
+                                ) : (
+                                  <>
+                                    {resourceTypeLabel(resource.type)}: {resource.title}
+                                  </>
+                                )}
                               {resource.duration && <span className="ml-2 text-xs text-neutral-400">({resource.duration})</span>}
                             </li>
                           ))}

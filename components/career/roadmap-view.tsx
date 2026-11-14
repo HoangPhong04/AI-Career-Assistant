@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { careerLevelLabel, resourceTypeLabel } from "@/lib/career/labels";
 
 type Resource = {
   type: "course" | "book" | "article" | "project" | "certification";
@@ -130,7 +131,7 @@ export function RoadmapView({ roadmap, onBack }: RoadmapViewProps) {
         <div>
           <h2 className="text-lg font-semibold text-neutral-950">Lộ trình sự nghiệp</h2>
           <p className="mt-1 text-sm text-neutral-500">
-            {roadmap.targetRole} · {roadmap.targetLevel}
+            {roadmap.targetRole} · {careerLevelLabel(roadmap.targetLevel)}
             {roadmap.roadmap.estimatedMonths && ` · ~${roadmap.roadmap.estimatedMonths} tháng`}
           </p>
         </div>
@@ -239,7 +240,7 @@ export function RoadmapView({ roadmap, onBack }: RoadmapViewProps) {
                             className="flex flex-wrap items-baseline gap-2"
                           >
                             <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-500">
-                              {res.type}
+                              {resourceTypeLabel(res.type)}
                             </span>
                             {res.url ? (
                               <a

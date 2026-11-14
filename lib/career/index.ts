@@ -25,9 +25,11 @@ import { aiInternals, stripJsonFence, AICareerError, AIAnalysisError } from "@/l
 // ─── Prompt templates ──────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `
-You are an expert Career Development Advisor and Technical Mentor.
-Given a target job role and the candidate's current skill set, you must
-respond ONLY with a valid JSON object — no markdown, no extra text.
+Bạn là chuyên gia tư vấn phát triển nghề nghiệp và cố vấn kỹ thuật.
+Dựa trên vị trí mục tiêu và bộ kỹ năng hiện tại của ứng viên, hãy trả lời
+hoàn toàn bằng tiếng Việt, ngoại trừ các giá trị enum và tên khóa JSON được
+yêu cầu. Chỉ trả về một đối tượng JSON hợp lệ, không markdown và không thêm
+nội dung nào khác.
 `.trim();
 
 /**
@@ -37,46 +39,47 @@ respond ONLY with a valid JSON object — no markdown, no extra text.
 export function buildSkillGapPrompt(input: CareerAnalyzeInput): string {
   const targetLevel = input.targetLevel ?? input.currentLevel;
   const skills = input.currentSkills
-    ? `Current skills:\n  Technical: ${input.currentSkills.technical.join(", ") || "(none)"}\n  Soft: ${input.currentSkills.soft.join(", ") || "(none)"}`
+    ? `Kỹ năng hiện tại:\n  Kỹ năng kỹ thuật: ${input.currentSkills.technical.join(", ") || "(trống)"}\n  Kỹ năng mềm: ${input.currentSkills.soft.join(", ") || "(trống)"}`
     : input.cvText
     ? `CV text for you to extract current skills:\n"""\n${input.cvText}\n"""`
-    : `No CV text or skill list provided.
-The candidate has NOT listed their skills, so you must INFER a realistic skill
-profile for someone at the "${input.currentLevel}" level in "${input.targetRole}",
-then compare it against what the "${targetLevel}" level requires.
-State your assumption clearly in "gapSummary" (e.g. "Dựa trên tiêu chuẩn
-${input.currentLevel} của vị trí ..., bạn hiện có thể đang ở ...").`;
+    : `Không có nội dung CV hoặc danh sách kỹ năng.
+Ứng viên chưa cung cấp kỹ năng, vì vậy hãy SUY LUẬN một hồ sơ kỹ năng thực tế
+cho người ở cấp "${input.currentLevel}" của vị trí "${input.targetRole}", sau đó
+so sánh với yêu cầu của cấp "${targetLevel}". Nêu rõ giả định trong "gapSummary"
+(ví dụ: "Dựa trên tiêu chuẩn cấp ... của vị trí ..., bạn hiện có thể đang ở ...").`;
 
   return `
-Analyze the skill gap for a candidate targeting the role of "${input.targetRole}"
-at the "${targetLevel}" level.
-The candidate's CURRENT level is "${input.currentLevel}".
+Phân tích khoảng cách kỹ năng cho ứng viên hướng tới vị trí "${input.targetRole}"
+ở cấp "${targetLevel}". Cấp HIỆN TẠI của ứng viên là "${input.currentLevel}".
 
 ${skills}
 
-Respond with this EXACT JSON structure (no markdown fences):
+Trả về đúng cấu trúc JSON sau (không có markdown fence). Nội dung của các
+trường văn bản như "reason", "title" và "gapSummary" phải bằng tiếng Việt.
+Chỉ trả về tối đa 6 kỹ năng còn thiếu, mỗi kỹ năng tối đa 2 tài nguyên gợi ý,
+và giữ phần mô tả ngắn gọn để bảo đảm JSON hoàn chỉnh.
 {
   "targetRole": "...",
   "currentLevel": "...",
   "gapSkills": [
     {
-      "skill": "Skill name",
+      "skill": "Tên kỹ năng",
       "category": "technical | soft",
       "importance": "must-have | nice-to-have",
-      "reason": "Why this gap matters for the target role",
+      "reason": "Lý do khoảng cách này quan trọng với vị trí mục tiêu",
       "suggestedResources": [
         {
           "type": "course | book | article | project | certification",
-          "title": "Resource name",
+          "title": "Tên tài nguyên",
           "url": "https://...",
-          "duration": "e.g. 2 weeks"
+          "duration": "ví dụ: 2 tuần"
         }
       ]
     }
   ],
   "matchedSkills": ["skill 1", "skill 2"],
   "overallGapScore": 0-100,
-  "gapSummary": "1-2 sentence summary of the gap"
+  "gapSummary": "Tóm tắt khoảng cách trong 1-2 câu bằng tiếng Việt"
 }
 `.trim();
 }
@@ -88,23 +91,25 @@ Respond with this EXACT JSON structure (no markdown fences):
 export function buildRoadmapPrompt(input: CareerAnalyzeInput): string {
   const targetLevel = input.targetLevel ?? input.currentLevel;
   const skills = input.currentSkills
-    ? `Current skills:\n  Technical: ${input.currentSkills.technical.join(", ") || "(none)"}\n  Soft: ${input.currentSkills.soft.join(", ") || "(none)"}`
+    ? `Kỹ năng hiện tại:\n  Kỹ năng kỹ thuật: ${input.currentSkills.technical.join(", ") || "(trống)"}\n  Kỹ năng mềm: ${input.currentSkills.soft.join(", ") || "(trống)"}`
     : input.cvText
     ? `CV text for you to extract current skills:\n"""\n${input.cvText}\n"""`
-    : `No CV text or skill list provided.
-The candidate has NOT listed their skills. INFER a realistic skill profile for
-someone at the "${input.currentLevel}" level in "${input.targetRole}" and use it
-as the baseline. Reflect that inference in "skillGap.gapSummary" so the user
-knows the plan is based on an assumption rather than their own CV.`;
+    : `Không có nội dung CV hoặc danh sách kỹ năng.
+Ứng viên chưa cung cấp kỹ năng. Hãy SUY LUẬN một hồ sơ kỹ năng thực tế cho người
+ở cấp "${input.currentLevel}" của vị trí "${input.targetRole}" và dùng hồ sơ đó
+làm cơ sở. Nêu rõ giả định trong "skillGap.gapSummary" để người dùng biết kế
+hoạch dựa trên giả định thay vì CV của họ.`;
 
   return `
-You are a career development advisor. For a candidate targeting "${input.targetRole}"
-at the "${targetLevel}" level, produce a complete career roadmap.
-The candidate's CURRENT level is "${input.currentLevel}".
+Bạn là chuyên gia tư vấn phát triển nghề nghiệp. Với ứng viên hướng tới
+"${input.targetRole}" ở cấp "${targetLevel}", hãy tạo một lộ trình nghề nghiệp
+đầy đủ. Cấp HIỆN TẠI của ứng viên là "${input.currentLevel}".
 
 ${skills}
 
-Respond ONLY with this JSON (no markdown fences):
+Chỉ trả về JSON sau (không markdown fence). Tất cả nội dung mô tả, mục tiêu,
+nhiệm vụ, cột mốc, tài nguyên và lời khuyên phải bằng tiếng Việt. Giữ nguyên
+các tên khóa JSON và giá trị enum bằng tiếng Anh để đảm bảo đúng schema.
 {
   "targetRole": "...",
   "targetLevel": "...",
@@ -120,17 +125,17 @@ Respond ONLY with this JSON (no markdown fences):
     "estimatedMonths": 6,
     "phases": [
       {
-        "phase": "Phase 1: Foundation (Month 1-2)",
-        "goals": ["Goal 1", "Goal 2"],
+        "phase": "Giai đoạn 1: Nền tảng (Tháng 1-2)",
+        "goals": ["Mục tiêu 1", "Mục tiêu 2"],
         "tasks": [
           {
-            "title": "Task title",
-            "description": "Optional description",
+            "title": "Tên nhiệm vụ",
+            "description": "Mô tả tùy chọn",
             "estimatedDays": 14,
             "resources": [
               { "type": "course | book | article | project | certification", "title": "...", "url": "https://...", "duration": "..." }
             ],
-            "milestones": ["Milestone 1", "Milestone 2"]
+            "milestones": ["Cột mốc 1", "Cột mốc 2"]
           }
         ]
       }
@@ -138,9 +143,9 @@ Respond ONLY with this JSON (no markdown fences):
     "totalEstimatedDays": 180
   },
   "careerAdvice": {
-    "immediate": ["Action 1", "Action 2"],
-    "shortTerm": ["Action 1", "Action 2"],
-    "longTerm": ["Action 1", "Action 2"]
+    "immediate": ["Việc cần làm ngay 1", "Việc cần làm ngay 2"],
+    "shortTerm": ["Việc cần làm ngắn hạn 1", "Việc cần làm ngắn hạn 2"],
+    "longTerm": ["Việc cần làm dài hạn 1", "Việc cần làm dài hạn 2"]
   }
 }
 `.trim();
@@ -252,7 +257,7 @@ export async function analyzeSkillGap(
       systemPrompt: SYSTEM_PROMPT,
       userMessage: prompt,
       temperature: 0.3,
-      maxTokens: 2048,
+      maxTokens: 4096,
     });
   } catch (err) {
     // A quota failure already carries its own code and reset time — it must
@@ -262,30 +267,47 @@ export async function analyzeSkillGap(
       throw new AICareerError(err.message, "AI_QUOTA_EXCEEDED", err.resetsAt);
     }
     throw new AICareerError(
-      `Skill gap analysis failed: ${(err as Error).message}`,
+      `Phân tích khoảng cách kỹ năng thất bại: ${(err as Error).message}`,
       "AI_REQUEST_FAILED"
     );
   }
 
-  try {
-    const parsed_1 = SkillGapSchema.safeParse(JSON.parse(stripJsonFence(raw)));
-    if (!parsed_1.success) {
-      console.error("[career/skill-gap] Schema errors:", parsed_1.error.flatten());
-      console.error("[career/skill-gap] Raw response:", raw);
-      throw new AICareerError(
-        `AI response does not match SkillGap schema: ${parsed_1.error.message}`,
-        "INVALID_RESPONSE_SCHEMA"
+  const parseSkillGap = (response: string): SkillGap | null => {
+    try {
+      const parsed = SkillGapSchema.safeParse(
+        JSON.parse(stripJsonFence(response))
       );
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
     }
-    return parsed_1.data;
-  } catch (err) {
-    if (err instanceof AICareerError) throw err;
-    console.error("[career/skill-gap] Parse error:", err);
-    throw new AICareerError(
-      "Failed to parse AI skill gap response.",
-      "INVALID_RESPONSE_SCHEMA"
-    );
-  }
+  };
+
+  const parsedSkillGap = parseSkillGap(raw);
+  if (parsedSkillGap) return parsedSkillGap;
+
+  console.warn(
+    "[career/skill-gap] AI returned incomplete or invalid JSON; retrying with a concise response request."
+  );
+  const retryRaw = await aiInternals.chatCompletion({
+    systemPrompt: `${SYSTEM_PROMPT}
+Nếu lần trước trả về JSON chưa hoàn chỉnh, lần này hãy tạo lại từ đầu.
+Không cắt ngắn giữa chuỗi hoặc mảng; chỉ trả về JSON hoàn chỉnh.`,
+    userMessage: `${prompt}
+
+Hãy trả lời ngắn gọn: tối đa 4 kỹ năng còn thiếu, không cần URL tài nguyên,
+nhưng vẫn phải trả về đầy đủ các khóa JSON và đóng mọi dấu ngoặc.`,
+    temperature: 0,
+    maxTokens: 4096,
+  });
+  const retriedSkillGap = parseSkillGap(retryRaw);
+  if (retriedSkillGap) return retriedSkillGap;
+
+  console.error("[career/skill-gap] AI returned invalid JSON after retry.");
+  throw new AICareerError(
+    "AI trả về kết quả phân tích không hoàn chỉnh. Vui lòng thử lại.",
+    "INVALID_RESPONSE_SCHEMA"
+  );
 }
 
 /**
@@ -322,7 +344,7 @@ export async function generateRoadmap(
       throw new AICareerError(err.message, "AI_QUOTA_EXCEEDED", err.resetsAt);
     }
     throw new AICareerError(
-      `Roadmap generation failed: ${(err as Error).message}`,
+      `Tạo lộ trình nghề nghiệp thất bại: ${(err as Error).message}`,
       "AI_REQUEST_FAILED"
     );
   }
@@ -345,7 +367,7 @@ export async function generateRoadmap(
     if (err instanceof AICareerError) throw err;
     console.error("[career/roadmap] Parse error:", err);
     throw new AICareerError(
-      "Failed to parse AI roadmap response.",
+      "Không thể đọc kết quả lộ trình nghề nghiệp từ AI.",
       "INVALID_RESPONSE_SCHEMA"
     );
   }

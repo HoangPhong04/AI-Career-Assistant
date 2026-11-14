@@ -67,7 +67,7 @@ test("buildSkillGapPrompt lists technical and soft skills when provided", () => 
 
 test("buildSkillGapPrompt shows fallback when no skills and no CV text", () => {
   const prompt = buildSkillGapPrompt(baseInput);
-  assert.match(prompt, /No CV text or skill list provided/);
+  assert.match(prompt, /Không có nội dung CV hoặc danh sách kỹ năng/);
 });
 
 test("buildSkillGapPrompt embeds CV text when provided", () => {
@@ -76,7 +76,7 @@ test("buildSkillGapPrompt embeds CV text when provided", () => {
     cvText: "10 years building React apps",
   });
   assert.match(prompt, /10 years building React apps/);
-  assert.doesNotMatch(prompt, /No CV text or skill list provided/);
+  assert.doesNotMatch(prompt, /Không có nội dung CV hoặc danh sách kỹ năng/);
 });
 
 test("buildSkillGapPrompt shows (none) for empty skill arrays", () => {
@@ -84,13 +84,13 @@ test("buildSkillGapPrompt shows (none) for empty skill arrays", () => {
     ...baseInput,
     currentSkills: { technical: [], soft: [] },
   });
-  assert.match(prompt, /Technical: \(none\)/);
-  assert.match(prompt, /Soft: \(none\)/);
+  assert.match(prompt, /Kỹ năng kỹ thuật: \(trống\)/);
+  assert.match(prompt, /Kỹ năng mềm: \(trống\)/);
 });
 
 test("buildSkillGapPrompt asks for valid JSON without markdown fences", () => {
   const prompt = buildSkillGapPrompt(baseInput);
-  assert.match(prompt, /no markdown fences/);
+  assert.match(prompt, /không có markdown fence/);
   assert.match(prompt, /overallGapScore/);
   assert.match(prompt, /gapSkills/);
 });
@@ -108,7 +108,7 @@ test("buildRoadmapPrompt produces roadmap JSON skeleton", () => {
 
 test("buildRoadmapPrompt indicates no input when nothing is supplied", () => {
   const prompt = buildRoadmapPrompt(baseInput);
-  assert.match(prompt, /No CV text or skill list provided/);
+  assert.match(prompt, /Không có nội dung CV hoặc danh sách kỹ năng/);
 });
 
 // ─── Validators ───────────────────────────────────────────────────────────────
