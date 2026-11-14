@@ -1,6 +1,7 @@
 "use client";
 
 import { QuotaNotice } from "@/components/shared/quota-notice";
+import { careerLevelLabel, RESOURCE_TYPE_LABEL } from "@/lib/career/labels";
 
 type SkillGapItem = {
   skill: string;
@@ -60,10 +61,10 @@ export function SkillGapView({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-neutral-950">Phân tích Skill Gap</h2>
+          <h2 className="text-lg font-semibold text-neutral-950">          Phân tích khoảng cách kỹ năng</h2>
           <p className="mt-1 text-sm text-neutral-500">
             Mục tiêu: <span className="font-medium text-neutral-700">{skillGap.targetRole}</span>{" "}
-            · Cấp bậc: <span className="font-medium text-neutral-700">{skillGap.currentLevel}</span>
+            · Cấp bậc: <span className="font-medium text-neutral-700">{careerLevelLabel(skillGap.currentLevel)}</span>
           </p>
         </div>
         <button
@@ -123,7 +124,7 @@ export function SkillGapView({
         </div>
       )}
 
-      {/* Nice-to-have gap skills */}
+      {/* Kỹ năng nên có */}
       {niceToHave.length > 0 && (
         <div className="mt-6">
           <h3 className="text-sm font-semibold text-neutral-900">
@@ -137,7 +138,7 @@ export function SkillGapView({
         </div>
       )}
 
-      {/* No gap at all */}
+      {/* Không còn khoảng cách */}
       {skillGap.gapSkills.length === 0 && (
         <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-6 text-center">
           <p className="text-sm font-medium text-emerald-900">
@@ -163,7 +164,7 @@ export function SkillGapView({
         <p className="mt-6 text-sm text-red-700" role="alert">{error}</p>
       )}
 
-      {/* CTA: Generate roadmap */}
+      {/* Tạo lộ trình */}
       <div className="mt-8 border-t border-neutral-200 pt-6">
         <button
           className="rounded bg-emerald-800 px-5 py-2.5 font-semibold text-white hover:bg-emerald-900 disabled:opacity-60"
@@ -220,7 +221,7 @@ function SkillCard({ item, highlight }: { item: SkillGapItem; highlight?: boolea
             {item.suggestedResources.map((res, idx) => (
               <li key={`${item.skill}-res-${idx}`} className="flex flex-wrap items-baseline gap-2">
                 <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-500">
-                  {res.type}
+                  {RESOURCE_TYPE_LABEL[res.type] ?? res.type}
                 </span>
                 {res.url ? (
                   <a

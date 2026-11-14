@@ -40,7 +40,7 @@ export default async function SavedCareerRoadmapPage({
     return (
       <main className="mx-auto w-full max-w-4xl px-6 py-10">
         <Link className="text-sm text-emerald-800 hover:underline" href="/career">
-          ← Quay lại Career Roadmap
+          ← Quay lại lộ trình nghề nghiệp
         </Link>
         <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-800">
           Lộ trình này không còn đúng cấu trúc dữ liệu và không thể hiển thị chi tiết.
@@ -52,7 +52,7 @@ export default async function SavedCareerRoadmapPage({
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
       <Link className="text-sm text-emerald-800 hover:underline" href="/career">
-        ← Quay lại Career Roadmap
+        ← Quay lại lộ trình nghề nghiệp
       </Link>
       <SavedRoadmapDetail
         roadmap={parsed.data}

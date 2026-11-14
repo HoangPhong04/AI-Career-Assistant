@@ -26,14 +26,14 @@ import { belongsToUser } from "@/lib/access-control";
 export async function POST(req: NextRequest) {
   // 1. Auth
   const user = await getCurrentUser();
-  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue.");
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Vui lòng đăng nhập để tiếp tục.");
 
   // 2. Parse body
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
+    return apiError(400, "INVALID_JSON", "Dữ liệu gửi lên phải là JSON hợp lệ.");
   }
 
   const parsed = CareerAnalyzeInputSchema.safeParse(body);
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       })
     : null;
   if (requestedCvId && !cv)
-    return apiError(404, "CV_NOT_FOUND", "Analyzed CV not found or does not belong to you.");
+    return apiError(404, "CV_NOT_FOUND", "Không tìm thấy CV đã phân tích hoặc CV không thuộc về bạn.");
   if (cv) {
     cvId = cv.id;
     // Skills come from the normalized skill tables, with a legacy JSON fallback.
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   try {
     result = await generateRoadmap(input);
   } catch (err: unknown) {
-    return aiErrorResponse(err, "Roadmap generation failed.");
+    return aiErrorResponse(err, "Tạo lộ trình nghề nghiệp thất bại.");
   }
 
   // 5. Save to database
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     stepIds = flatTasks.map((_, idx) => roadmap.steps[idx]?.id).filter((id): id is string => Boolean(id));
   } catch (dbErr) {
     console.error("[career/roadmap] Database save failed:", dbErr);
-    return apiError(500, "DB_ERROR", "Failed to save roadmap to database.");
+    return apiError(500, "DB_ERROR", "Không thể lưu lộ trình vào cơ sở dữ liệu.");
   }
 
   return apiSuccess(
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
-  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue.");
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Vui lòng đăng nhập để tiếp tục.");
 
   const { searchParams } = new URL(req.url);
   const roadmapId = searchParams.get("id");
@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!roadmap) {
-      return apiError(404, "NOT_FOUND", "Roadmap not found.");
+      return apiError(404, "NOT_FOUND", "Không tìm thấy lộ trình.");
     }
 
     return apiSuccess({ roadmap });
@@ -164,13 +164,13 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const user = await getCurrentUser();
-  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue.");
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Vui lòng đăng nhập để tiếp tục.");
 
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
+    return apiError(400, "INVALID_JSON", "Dữ liệu gửi lên phải là JSON hợp lệ.");
   }
 
   const parsed = RoadmapStepUpdateSchema.safeParse(body);
@@ -187,7 +187,7 @@ export async function PATCH(req: NextRequest) {
   });
 
   if (!step || !belongsToUser(step.roadmap, user.id)) {
-    return apiError(404, "NOT_FOUND", "Step not found.");
+    return apiError(404, "NOT_FOUND", "Không tìm thấy nhiệm vụ.");
   }
 
   const updated = await prisma.roadmapStep.update({

@@ -10,16 +10,9 @@ import { readQuotaError } from "@/lib/ai/quota-client";
 import { QuotaNotice } from "@/components/shared/quota-notice";
 import { SkillGapView } from "./skill-gap-view";
 import { RoadmapView } from "./roadmap-view";
+import { CAREER_LEVEL_LABEL } from "@/lib/career/labels";
 
 const LEVELS = ["fresher", "junior", "mid", "senior", "lead"] as const;
-
-const LEVEL_LABEL: Record<(typeof LEVELS)[number], string> = {
-  fresher: "Mới ra trường (0-1 năm)",
-  junior: "Junior (1-2 năm)",
-  mid: "Mid (2-5 năm)",
-  senior: "Senior (5-8 năm)",
-  lead: "Lead / Trưởng nhóm (8+ năm)",
-};
 
 function readError(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
@@ -268,29 +261,28 @@ export function CareerForm() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full">
       {/* ── Step 1: Nhập mục tiêu ── */}
       {view === "form" && (
         <section>
           <div className="mb-1">
-            <h2 className="text-lg font-semibold text-neutral-950">
-              Xây dựng lộ trình sự nghiệp
+            <h2 className="text-xl font-semibold tracking-tight text-slate-950">
+              Tạo lộ trình nghề nghiệp
             </h2>
-            <p className="mt-1 text-sm text-neutral-500">
-              Nhập vai trò mục tiêu và cấp bậc hiện tại. AI sẽ tự suy luận kỹ năng
-              của bạn và đề xuất lộ trình để đạt cấp bậc mong muốn.
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              Chọn mục tiêu nghề nghiệp để bắt đầu phân tích kỹ năng và xây dựng lộ trình phù hợp.
             </p>
           </div>
 
           <form className="mt-6 space-y-5" onSubmit={handleAnalyze}>
-            <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm leading-5 text-emerald-800">
               {cvSelectionHint(selectedCvId, selectedSkillCount, cvOptions.length)}
             </p>
             <label className="block text-sm font-medium text-neutral-800">
               Vai trò mục tiêu
               <input
                 autoComplete="off"
-                className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+                className="mt-2 block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
                 maxLength={100}
                 onChange={(e) => {
                   setTargetRole(e.target.value);
@@ -310,13 +302,13 @@ export function CareerForm() {
               <label className="block text-sm font-medium text-neutral-800">
                 Cấp bậc hiện tại
                 <select
-                  className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:border-emerald-700/20"
+                  className="mt-2 block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
                   onChange={(e) => setCurrentLevel(e.target.value as typeof LEVELS[number])}
                   value={currentLevel}
                 >
                   {LEVELS.map((l) => (
                     <option key={l} value={l}>
-                      {LEVEL_LABEL[l]}
+                      {CAREER_LEVEL_LABEL[l]}
                     </option>
                   ))}
                 </select>
@@ -325,13 +317,13 @@ export function CareerForm() {
               <label className="block text-sm font-medium text-neutral-800">
                 Cấp bậc mong muốn
                 <select
-                  className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:border-emerald-700/20"
+                  className="mt-2 block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
                   onChange={(e) => setTargetLevel(e.target.value as typeof LEVELS[number])}
                   value={targetLevel}
                 >
                   {LEVELS.map((l) => (
                     <option key={l} value={l}>
-                      {LEVEL_LABEL[l]}
+                      {CAREER_LEVEL_LABEL[l]}
                     </option>
                   ))}
                 </select>
@@ -348,7 +340,7 @@ export function CareerForm() {
             <label className="block text-sm font-medium text-neutral-800">
               CV đã phân tích
               <select
-                className="mt-2 block w-full rounded border border-neutral-300 px-3 py-2.5 text-base outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+                className="mt-2 block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
                 onChange={(e) => setSelectedCvId(e.target.value)}
                 value={selectedCvId}
               >
@@ -378,11 +370,11 @@ export function CareerForm() {
 
             <div className="flex gap-3 pt-1">
               <button
-                className="rounded bg-emerald-800 px-5 py-2.5 font-semibold text-white hover:bg-emerald-900 disabled:opacity-60"
+                className="rounded-xl bg-emerald-800 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isAnalyzing || !targetRole.trim() || !canAnalyze}
                 type="submit"
               >
-                {isAnalyzing ? "Đang phân tích..." : "Phân tích Skill Gap"}
+                {isAnalyzing ? "Đang phân tích..." : "Phân tích khoảng cách kỹ năng"}
               </button>
             </div>
           </form>

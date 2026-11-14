@@ -41,14 +41,14 @@ async function applyAnalyzedCV(userId: string, input: z.infer<typeof CareerAnaly
 export async function POST(req: NextRequest) {
   // 1. Auth
   const user = await getCurrentUser();
-  if (!user) return apiError(401, "UNAUTHENTICATED", "Please sign in to continue.");
+  if (!user) return apiError(401, "UNAUTHENTICATED", "Vui lòng đăng nhập để tiếp tục.");
 
   // 2. Parse body
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
+    return apiError(400, "INVALID_JSON", "Dữ liệu gửi lên phải là JSON hợp lệ.");
   }
 
   const parsed = CareerAnalyzeInputSchema.safeParse(body);
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   try {
     skillGap = await analyzeSkillGap(input);
   } catch (err: unknown) {
-    return aiErrorResponse(err, "Skill gap analysis failed.");
+    return aiErrorResponse(err, "Phân tích khoảng cách kỹ năng thất bại.");
   }
 
   // 4. Save career goal for reference (optional — do not block on DB error)
