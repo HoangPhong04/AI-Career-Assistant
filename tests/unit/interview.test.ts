@@ -19,7 +19,7 @@ import {
 } from "@/lib/interview";
 
 let response = "";
-let queuedResponses: string[] = [];
+let queuedResponses: Array<string | Error> = [];
 let callCount = 0;
 
 test("AI quota errors are normalized without exposing provider response details", () => {
@@ -47,10 +47,23 @@ test("temporary Gemini unavailability is normalized to a Vietnamese retry messag
   assert.doesNotMatch(error.message, /high demand|UNAVAILABLE/);
 });
 
+test("other AI provider errors do not expose raw details to users", () => {
+  const error = normalizeAIRequestError({
+    status: 500,
+    message: "Internal provider error: private request details",
+  });
+
+  assert.equal(error.code, "AI_REQUEST_FAILED");
+  assert.match(error.message, /không thể xử lý yêu cầu/i);
+  assert.doesNotMatch(error.message, /private request details|Internal provider error/);
+});
+
 test.before(() => {
   test.mock.method(aiInternals, "chatCompletion", async () => {
     callCount += 1;
-    return queuedResponses.shift() ?? response;
+    const queuedResponse = queuedResponses.shift();
+    if (queuedResponse instanceof Error) throw queuedResponse;
+    return queuedResponse ?? response;
   });
 });
 
@@ -135,6 +148,30 @@ test("question generation parses valid questions and uses requested settings", a
   assert.equal(questions[1]?.questionType, "BEHAVIORAL");
 });
 
+test("question generation retries a temporary provider outage once", async () => {
+  callCount = 0;
+  queuedResponses = [
+    new AIAnalysisError("Temporarily unavailable.", "AI_UNAVAILABLE"),
+    JSON.stringify({
+      questions: [
+        { questionText: "Bạn thiết kế API đáng tin cậy như thế nào?", questionType: "TECHNICAL" },
+        { questionText: "Bạn giải quyết bất đồng trong nhóm ra sao?", questionType: "BEHAVIORAL" },
+        { questionText: "Bạn xử lý truy vấn chậm như thế nào?", questionType: "TECHNICAL" },
+      ],
+    }),
+  ];
+
+  const questions = await generateInterviewQuestions({
+    targetRole: "Backend Developer",
+    difficulty: "mid",
+    type: "MIXED",
+    questionCount: 3,
+  });
+
+  assert.equal(questions.length, 3);
+  assert.equal(callCount, 2);
+});
+
 test("question generation rejects a response with the wrong question count", async () => {
   response = JSON.stringify({
     questions: [
@@ -206,6 +243,30 @@ test("answer evaluation retries once when the AI response is invalid JSON", asyn
   assert.equal(evaluation.score, 82);
 });
 
+test("answer evaluation retries a temporary provider outage once", async () => {
+  callCount = 0;
+  queuedResponses = [
+    new AIAnalysisError("Temporarily unavailable.", "AI_UNAVAILABLE"),
+    JSON.stringify({
+      score: 82,
+      feedback: "Câu trả lời rõ ràng.",
+      strengths: ["Có ví dụ cụ thể."],
+      improvements: ["Nêu cách đo kết quả."],
+    }),
+  ];
+
+  const evaluation = await evaluateInterviewAnswer({
+    targetRole: "Backend Developer",
+    difficulty: "junior",
+    question: "Bạn kiểm thử API như thế nào?",
+    questionType: "TECHNICAL",
+    answer: "Tôi viết kiểm thử đơn vị.",
+  });
+
+  assert.equal(evaluation.score, 82);
+  assert.equal(callCount, 2);
+});
+
 test("answer evaluation returns a clear error when its retry is still invalid", async () => {
   callCount = 0;
   queuedResponses = ["not JSON", "still not JSON"];
@@ -226,5 +287,46 @@ test("answer evaluation returns a clear error when its retry is still invalid", 
   );
 
   assert.equal(callCount, 2);
+  queuedResponses = [];
+});
+
+test("answer evaluation does not retry quota or provider failures", async () => {
+  const failures = [
+    new AIAnalysisError("Quota limit reached.", "AI_QUOTA_EXCEEDED"),
+    new AIAnalysisError("Provider request failed.", "AI_REQUEST_FAILED"),
+    new AIAnalysisError(
+      "Response format was invalid.",
+      "INVALID_RESPONSE_SCHEMA"
+    ),
+  ];
+
+  for (const failure of failures) {
+    callCount = 0;
+    queuedResponses = [
+      failure,
+      JSON.stringify({
+        score: 82,
+        feedback: "Câu trả lời rõ ràng.",
+        strengths: [],
+        improvements: [],
+      }),
+    ];
+
+    await assert.rejects(
+      () =>
+        evaluateInterviewAnswer({
+          targetRole: "Backend Developer",
+          difficulty: "junior",
+          question: "Bạn kiểm thử API như thế nào?",
+          questionType: "TECHNICAL",
+          answer: "Tôi viết kiểm thử đơn vị.",
+        }),
+      (error: unknown) =>
+        error instanceof AIAnalysisError && error.code === failure.code
+    );
+
+    assert.equal(callCount, 1);
+  }
+
   queuedResponses = [];
 });

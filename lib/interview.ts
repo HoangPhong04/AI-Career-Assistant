@@ -48,6 +48,31 @@ export type InterviewAnswerEvaluation = z.infer<
   typeof InterviewAnswerEvaluationSchema
 >;
 
+const TRANSIENT_AI_RETRY_DELAY_MS = 750;
+
+async function interviewChatCompletion(
+  input: Parameters<typeof aiInternals.chatCompletion>[0]
+): Promise<string> {
+  try {
+    return await aiInternals.chatCompletion(input);
+  } catch (error) {
+    if (
+      !(error instanceof AIAnalysisError) ||
+      error.code !== "AI_UNAVAILABLE"
+    ) {
+      throw error;
+    }
+
+    console.warn(
+      "[interview] AI temporarily unavailable; retrying the request once."
+    );
+    await new Promise((resolve) =>
+      setTimeout(resolve, TRANSIENT_AI_RETRY_DELAY_MS)
+    );
+    return aiInternals.chatCompletion(input);
+  }
+}
+
 export function calculateInterviewOverallScore(
   scores: Array<number | string | null>
 ): number | null {
@@ -122,7 +147,7 @@ Chấm điểm từ 0 đến 100.
 export async function generateInterviewQuestions(
   input: CreateInterviewSessionInput
 ): Promise<InterviewQuestion[]> {
-  const raw = await aiInternals.chatCompletion({
+  const raw = await interviewChatCompletion({
     systemPrompt:
       "Bạn là chuyên gia phỏng vấn giàu kinh nghiệm. Hãy viết mọi câu hỏi bằng tiếng Việt tự nhiên và chỉ trả về JSON hợp lệ với các câu hỏi ngắn gọn, thực tế.",
     userMessage: buildInterviewQuestionsPrompt(input),
@@ -174,7 +199,7 @@ export async function evaluateInterviewAnswer(input: {
 
   const systemPrompt =
     "Bạn là chuyên gia huấn luyện phỏng vấn công bằng. Đánh giá câu trả lời dựa trên vị trí, cấp độ và nội dung câu hỏi; chỉ trả về JSON hợp lệ bằng tiếng Việt.";
-  const raw = await aiInternals.chatCompletion({
+  const raw = await interviewChatCompletion({
     systemPrompt,
     userMessage,
     temperature: 0.2,
@@ -183,7 +208,7 @@ export async function evaluateInterviewAnswer(input: {
   const evaluation = parseEvaluation(raw);
   if (evaluation) return evaluation;
 
-  const retriedRaw = await aiInternals.chatCompletion({
+  const retriedRaw = await interviewChatCompletion({
     systemPrompt: `${systemPrompt} Đầu ra phải là một đối tượng JSON hợp lệ, không có văn bản hoặc Markdown bên ngoài JSON.`,
     userMessage: `${userMessage}\n\nHãy kiểm tra kỹ cú pháp JSON và bảo đảm mọi chuỗi được escape hợp lệ.`,
     temperature: 0,
