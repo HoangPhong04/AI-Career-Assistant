@@ -568,6 +568,7 @@ Khi deploy cần cấu hình Environment Variables trên hosting thay vì commit
 - `plan.md`: kế hoạch và phạm vi dự án.
 - `README.md`: hướng dẫn setup và development.
 - `prisma/schema.prisma`: database schema.
+- `docs/interview-module.md`: hướng dẫn sử dụng và xử lý lỗi Interview Simulator.
 - `docs/`: tài liệu kỹ thuật bổ sung.
 
 ## 22. Trạng thái dự án

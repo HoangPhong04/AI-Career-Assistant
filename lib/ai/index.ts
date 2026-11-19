@@ -91,7 +91,10 @@ export function normalizeAIRequestError(error: unknown): AIAnalysisError {
     );
   }
 
-  return new AIAnalysisError(`AI request failed: ${message}`, "AI_REQUEST_FAILED");
+  return new AIAnalysisError(
+    "Dịch vụ AI không thể xử lý yêu cầu lúc này. Vui lòng thử lại sau hoặc liên hệ quản trị viên nếu lỗi tiếp diễn.",
+    "AI_REQUEST_FAILED"
+  );
 }
 
 /**
