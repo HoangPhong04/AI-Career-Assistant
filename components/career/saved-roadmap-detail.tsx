@@ -1,21 +1,29 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 // Imported from the pure module directly (not the `@/lib/career` barrel):
 // the barrel re-exports the skill repository, which imports Prisma and
 // would pull Node-only modules into the browser bundle.
-import { nextStepStatus, summarizeProgress } from "@/lib/career/progress";
-import type { CareerAnalyzeResult } from "@/lib/career/validators";
+import {
+  estimateRemainingGapScore,
+  nextStepStatus,
+  summarizeAddressedSkills,
+  summarizeProgress,
+} from "@/lib/career/progress";
+import type { PersistedCareerAnalyzeResult } from "@/lib/career/validators";
 import { careerLevelLabel, IMPORTANCE_LABEL, resourceTypeLabel } from "@/lib/career/labels";
 
 type Step = {
   id: string;
   status: string;
   orderIndex: number;
+  /** The gap skill this step closes — NULL when the link is unknown. */
+  addressesSkill?: string | null;
 };
 
 type SavedRoadmapDetailProps = {
-  roadmap: CareerAnalyzeResult;
+  roadmap: PersistedCareerAnalyzeResult;
   steps: Step[];
 };
 
@@ -45,6 +53,36 @@ export function SavedRoadmapDetail({
   const stepsByOrderIndex = new Map(steps.map((step) => [step.orderIndex, step]));
   const { completed, percent } = summarizeProgress(
     steps.map((step) => ({ id: step.id, status: statuses[step.id] ?? step.status }))
+  );
+
+  /**
+   * How many of the missing skills the completed steps have closed.
+   *
+   * This is the dynamic counterpart of the static "Mức độ còn thiếu" score:
+   * the score compares the candidate with the role, this counts what the
+   * user has actually tackled since the roadmap was created.
+   */
+  const addressed = summarizeAddressedSkills(
+    steps.map((step) => ({
+      id: step.id,
+      status: statuses[step.id] ?? step.status,
+      addressesSkill: step.addressesSkill,
+    })),
+    roadmap.skillGap.gapSkills.map((skill) => skill.skill)
+  );
+  const remainingGapScore =
+    roadmap.skillGap.overallGapScore === null
+      ? null
+      : estimateRemainingGapScore(roadmap.skillGap.overallGapScore, addressed);
+
+  /** The gap skills that a completed step has closed. */
+  const addressedSkills = new Set(
+    steps
+      .filter(
+        (step) =>
+          (statuses[step.id] ?? step.status) === "COMPLETED" && step.addressesSkill
+      )
+      .map((step) => (step.addressesSkill as string).trim().toLowerCase())
   );
 
   function updateStatus(stepId: string) {
@@ -103,17 +141,82 @@ export function SavedRoadmapDetail({
 
       <section className="mt-6 rounded-xl border border-neutral-200 bg-white p-6">
         <h2 className="text-lg font-semibold text-neutral-900">Phân tích khoảng cách kỹ năng</h2>
+        <p className="mt-2 text-sm font-medium text-neutral-700">
+          Tóm tắt phân tích ban đầu
+        </p>
         <p className="mt-2 text-sm leading-relaxed text-neutral-600">
-          {roadmap.skillGap.gapSummary}
+          {roadmap.skillGap.gapSummary ??
+            "Lộ trình này chưa có phần tóm tắt khoảng cách kỹ năng."}
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-              Điểm khoảng cách
+              Khoảng cách hiện tại (ước tính)
             </p>
-            <p className="mt-1 text-2xl font-semibold text-neutral-950">
-              {roadmap.skillGap.overallGapScore}/100
+            {remainingGapScore === null ? (
+              <>
+                <p className="mt-1 text-2xl font-semibold text-neutral-400">Chưa có</p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Lộ trình này được tạo trước khi lưu điểm khoảng cách. Tạo lại lộ trình
+                  để có điểm và tóm tắt đầy đủ.
+                </p>
+                <Link
+                  className="mt-3 inline-block rounded-lg bg-emerald-800 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+                  href="/career"
+                >
+                  Tạo lại lộ trình
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-2xl font-semibold text-neutral-950">
+                  {remainingGapScore}/100
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {addressed
+                    ? remainingGapScore === 0
+                      ? `Theo tiến độ lộ trình, bạn đã đánh dấu chinh phục ${addressed.total}/${addressed.total} kỹ năng còn thiếu.`
+                      : `Ước tính còn thiếu ${remainingGapScore}% dựa trên ${addressed.addressed}/${addressed.total} kỹ năng đã chinh phục.`
+                    : `Điểm khoảng cách ban đầu: ${remainingGapScore}/100. Lộ trình chưa liên kết nhiệm vụ với kỹ năng để cập nhật điểm theo tiến độ.`}
+                </p>
+                {addressed && (
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Đây là ước tính theo tiến độ nhiệm vụ, không phải đánh giá lại năng lực thực tế.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+              Kỹ năng đã chinh phục
             </p>
+            {addressed ? (
+              <>
+                <p className="mt-1 text-2xl font-semibold text-neutral-950">
+                  {addressed.addressed}/{addressed.total}
+                </p>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-neutral-200">
+                  <div
+                    className="h-full rounded-full bg-emerald-700 transition-all duration-500"
+                    style={{ width: `${addressed.percent}%` }}
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-neutral-500">
+                  {addressed.addressed === 0
+                    ? "Chưa kỹ năng nào trong danh sách còn thiếu đã được bắt đầu."
+                    : `Đã chinh phục ${addressed.addressed}/${addressed.total} kỹ năng còn thiếu (${addressed.percent}%).`}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-2xl font-semibold text-neutral-400">Chưa có</p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Lộ trình này chưa liên kết nhiệm vụ với kỹ năng còn thiếu, nên không
+                  tính được kỹ năng đã chinh phục.
+                </p>
+              </>
+            )}
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
@@ -131,17 +234,34 @@ export function SavedRoadmapDetail({
           </div>
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {roadmap.skillGap.gapSkills.map((skill) => (
-            <article className="rounded-lg border border-neutral-200 p-3" key={skill.skill}>
-              <div className="flex items-center justify-between gap-2">
+          {roadmap.skillGap.gapSkills.map((skill) => {
+            const isAddressed = addressedSkills.has(skill.skill.toLowerCase());
+            return (
+            <article
+              className={`rounded-lg border p-3 ${
+                isAddressed
+                  ? "border-emerald-200 bg-emerald-50/40"
+                  : "border-neutral-200"
+              }`}
+              key={skill.skill}
+            >
+              <div className="flex items-start justify-between gap-2">
                 <h3 className="font-medium text-neutral-900">{skill.skill}</h3>
-                <span className="text-xs text-neutral-500">
-                  {IMPORTANCE_LABEL[skill.importance] ?? skill.importance}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {isAddressed && (
+                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-emerald-800">
+                      Đã chinh phục
+                    </span>
+                  )}
+                  <span className="text-xs text-neutral-500">
+                    {IMPORTANCE_LABEL[skill.importance] ?? skill.importance}
+                  </span>
+                </div>
               </div>
               {skill.reason && <p className="mt-1 text-sm text-neutral-600">{skill.reason}</p>}
             </article>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -180,6 +300,14 @@ export function SavedRoadmapDetail({
                         {task.estimatedDays && <span>~{task.estimatedDays} ngày</span>}
                         {task.milestones.length > 0 && <span>{task.milestones.length} mốc</span>}
                       </div>
+                      {step?.addressesSkill && (
+                        <p className="mt-2 text-xs text-neutral-500">
+                          Giải quyết kỹ năng:{" "}
+                          <span className="font-medium text-neutral-700">
+                            {step.addressesSkill}
+                          </span>
+                        </p>
+                      )}
                       {task.resources.length > 0 && (
                         <ul className="mt-3 space-y-1 border-t border-neutral-200 pt-3 text-sm">
                           {task.resources.map((resource) => (

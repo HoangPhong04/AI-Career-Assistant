@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { SavedRoadmapDetail } from "@/components/career/saved-roadmap-detail";
 import {
-  CareerAnalyzeResultSchema,
+  PersistedCareerAnalyzeResultSchema,
   normalizeRoadmapResponse,
 } from "@/lib/career";
 import { getCurrentUser } from "@/lib/auth";
@@ -28,13 +28,14 @@ export default async function SavedCareerRoadmapPage({
 
   const currentLevel =
     CAREER_LEVELS.find((level) => level === roadmap.targetLevel) ?? "junior";
-  const parsed = CareerAnalyzeResultSchema.safeParse(
+  const parsed = PersistedCareerAnalyzeResultSchema.safeParse(
     normalizeRoadmapResponse(roadmap.roadmapJson, {
       targetRole: roadmap.targetRole,
       currentLevel,
     }, {
       missingSkills: roadmap.missingSkills,
-    })
+      skillGap: roadmap.skillGapJson,
+    }, "persisted")
   );
   if (!parsed.success) {
     return (
@@ -60,6 +61,7 @@ export default async function SavedCareerRoadmapPage({
           id: step.id,
           status: step.status,
           orderIndex: step.orderIndex,
+          addressesSkill: step.addressesSkill,
         }))}
       />
     </main>
