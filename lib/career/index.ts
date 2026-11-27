@@ -110,6 +110,11 @@ ${skills}
 Chỉ trả về JSON sau (không markdown fence). Tất cả nội dung mô tả, mục tiêu,
 nhiệm vụ, cột mốc, tài nguyên và lời khuyên phải bằng tiếng Việt. Giữ nguyên
 các tên khóa JSON và giá trị enum bằng tiếng Anh để đảm bảo đúng schema.
+
+Mỗi nhiệm vụ phải có trường "addressesSkill" chứa CHÍNH XÁC tên kỹ năng trong
+"skillGap.gapSkills" mà nhiệm vụ đó giải quyết (sao chép nguyên văn, không viết
+lại hay rút gọn). Nếu một nhiệm vụ không giải quyết kỹ năng cụ thể nào thì để
+trống trường này. Mỗi kỹ năng còn thiếu nên có ít nhất một nhiệm vụ tương ứng.
 {
   "targetRole": "...",
   "targetLevel": "...",
@@ -132,6 +137,7 @@ các tên khóa JSON và giá trị enum bằng tiếng Anh để đảm bảo �
             "title": "Tên nhiệm vụ",
             "description": "Mô tả tùy chọn",
             "estimatedDays": 14,
+            "addressesSkill": "Chính xác tên kỹ năng trong skillGap.gapSkills mà nhiệm vụ này giải quyết",
             "resources": [
               { "type": "course | book | article | project | certification", "title": "...", "url": "https://...", "duration": "..." }
             ],
@@ -151,18 +157,43 @@ các tên khóa JSON và giá trị enum bằng tiếng Anh để đảm bảo �
 `.trim();
 }
 
+/**
+ * Normalize a roadmap payload so it always has the expected shape.
+ *
+ * `mode` controls how missing values are handled:
+ *  - `"ai"` — the payload comes straight from the AI. The result must still
+ *    satisfy the strict `CareerAnalyzeResultSchema`, so a missing score
+ *    falls back to 0 and a missing summary falls back to a placeholder.
+ *  - `"persisted"` — the payload was read back from the database. A missing
+ *    score means "never captured", which is different from a real 0, so it
+ *    stays `null` and the UI shows "chưa có" instead of a misleading 0.
+ */
 export function normalizeRoadmapResponse(
   value: unknown,
   input: CareerAnalyzeInput,
-  fallback?: { missingSkills?: unknown }
+  fallback?: { missingSkills?: unknown; skillGap?: unknown },
+  mode: "ai" | "persisted" = "ai"
 ): unknown {
   if (typeof value !== "object" || value === null) return value;
 
+  const allowMissing = mode === "persisted";
+
   const response = value as Record<string, unknown>;
-  const skillGap =
+
+  // The skill gap can live in three places, in priority order:
+  //   1. inside the stored payload (`skillGap`) — the current shape
+  //   2. in the dedicated `skill_gap_json` column — used when the payload
+  //      was written by an older version that only kept the `roadmap` tree
+  //   3. nothing at all — legacy rows, handled by the fallbacks below
+  const inlineSkillGap =
     typeof response.skillGap === "object" && response.skillGap !== null
-      ? { ...(response.skillGap as Record<string, unknown>) }
-      : {};
+      ? (response.skillGap as Record<string, unknown>)
+      : null;
+  const columnSkillGap =
+    typeof fallback?.skillGap === "object" && fallback.skillGap !== null
+      ? (fallback.skillGap as Record<string, unknown>)
+      : null;
+  const skillGap = { ...(columnSkillGap ?? {}), ...(inlineSkillGap ?? {}) };
 
   const rawGapSkills =
     Array.isArray(skillGap.gapSkills) && skillGap.gapSkills.length > 0
@@ -220,14 +251,20 @@ export function normalizeRoadmapResponse(
       matchedSkills: Array.isArray(skillGap.matchedSkills)
         ? skillGap.matchedSkills
         : [],
+      // `null` means "never captured" — the UI renders it as "chưa có" instead
+      // of showing a misleading 0. `0` is a legitimate value (no gap at all).
       overallGapScore:
         typeof skillGap.overallGapScore === "number"
           ? skillGap.overallGapScore
-          : 0,
+          : allowMissing
+            ? null
+            : 0,
       gapSummary:
-        typeof skillGap.gapSummary === "string"
+        typeof skillGap.gapSummary === "string" && skillGap.gapSummary.trim()
           ? skillGap.gapSummary
-          : "Lộ trình này chưa lưu phần tóm tắt skill gap.",
+          : allowMissing
+            ? null
+            : "Lộ trình này chưa lưu phần tóm tắt skill gap.",
     },
   };
 }
@@ -378,12 +415,16 @@ export async function generateRoadmap(
 export {
   CareerAnalyzeInputSchema,
   CareerAnalyzeResultSchema,
+  PersistedCareerAnalyzeResultSchema,
+  PersistedSkillGapSchema,
   SkillGapSchema,
 } from "./validators";
 
 export type {
   CareerAnalyzeInput,
   CareerAnalyzeResult,
+  PersistedCareerAnalyzeResult,
+  PersistedSkillGap,
   SkillGap,
   SkillGapItem,
   RoadmapPhase,
@@ -409,8 +450,11 @@ export type { CvSkillSource, SkillSets } from "./skill-repository";
 export {
   buildRoadmapProgress,
   cvSelectionHint,
+  estimateRemainingGapScore,
   nextStepStatus,
+  resolveAddressedSkill,
   resolveSkillPayload,
+  summarizeAddressedSkills,
   summarizeProgress,
   validateRoleInput,
   COMPLETED_STATUS,

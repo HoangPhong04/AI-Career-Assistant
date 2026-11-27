@@ -147,6 +147,89 @@ test("a roadmap and its steps are persisted and read back", async () => {
   assert.equal(reloaded.roadmapJson !== null, true);
 });
 
+// ─── The skill gap survives the round trip ───────────────────────────────────
+
+test("the skill gap payload and its score are persisted and read back", async () => {
+  const roadmap = await prisma.careerRoadmap.create({
+    data: {
+      userId: ownerId,
+      targetRole: "Skill Gap Role",
+      targetLevel: "mid",
+      currentSkills: { technical: ["TypeScript"], soft: [] },
+      missingSkills: ["GraphQL", "Kafka"],
+      skillGapJson: {
+        targetRole: "Skill Gap Role",
+        currentLevel: "junior",
+        gapSkills: [
+          {
+            skill: "GraphQL",
+            category: "technical",
+            importance: "must-have",
+            reason: "Cần cho API hiệu suất cao.",
+            suggestedResources: [],
+          },
+          {
+            skill: "Kafka",
+            category: "technical",
+            importance: "nice-to-have",
+            reason: "Hệ thống event-driven.",
+            suggestedResources: [],
+          },
+        ],
+        matchedSkills: ["TypeScript"],
+        overallGapScore: 45,
+        gapSummary: "Còn thiếu GraphQL và Kafka.",
+      },
+      overallGapScore: 45,
+      roadmapJson: {
+        targetRole: "Skill Gap Role",
+        targetLevel: "mid",
+        skillGap: {
+          targetRole: "Skill Gap Role",
+          currentLevel: "junior",
+          gapSkills: [
+            {
+              skill: "GraphQL",
+              category: "technical",
+              importance: "must-have",
+              reason: "Cần cho API hiệu suất cao.",
+              suggestedResources: [],
+            },
+          ],
+          matchedSkills: ["TypeScript"],
+          overallGapScore: 45,
+          gapSummary: "Còn thiếu GraphQL và Kafka.",
+        },
+        roadmap: { phases: [] },
+      },
+    },
+    select: { id: true },
+  });
+
+  const reloaded = await prisma.careerRoadmap.findUnique({
+    where: { id: roadmap.id },
+    select: {
+      skillGapJson: true,
+      overallGapScore: true,
+      missingSkills: true,
+    },
+  });
+
+  assert.ok(reloaded);
+  assert.equal(reloaded.overallGapScore, 45);
+  assert.equal(
+    (reloaded.skillGapJson as { overallGapScore: number }).overallGapScore,
+    45
+  );
+  // The per-skill metadata survives too — not only the skill names.
+  const gapSkills = (reloaded.skillGapJson as { gapSkills: { reason: string }[] })
+    .gapSkills;
+  assert.equal(gapSkills.length, 2);
+  assert.equal(gapSkills[0]?.reason, "Cần cho API hiệu suất cao.");
+
+  await prisma.careerRoadmap.delete({ where: { id: roadmap.id } });
+});
+
 // ─── Progress survives a reload ──────────────────────────────────────────────
 
 test("step progress survives a reload", async () => {
@@ -310,7 +393,7 @@ test("the API answers a quota failure with 429 and the reset time", async () => 
   assert.doesNotMatch(body.error.message, /quotaMetric/);
 });
 
-test("the API answers an ordinary AI failure with 500", async () => {
+test("the API answers an ordinary AI failure with 502", async () => {
   const { aiErrorResponse } = await import("@/lib/utils");
 
   const response = aiErrorResponse(
@@ -318,7 +401,10 @@ test("the API answers an ordinary AI failure with 500", async () => {
     "Roadmap generation failed."
   );
 
-  assert.equal(response.status, 500);
+  // A provider failure is not a server bug: the request was valid, the
+  // upstream AI call was not. 502 tells the client to retry rather than
+  // to report a broken server.
+  assert.equal(response.status, 502);
 
   const body = (await response.json()) as { error: { code: string } };
   assert.equal(body.error.code, "AI_REQUEST_FAILED");
@@ -438,7 +524,7 @@ test("a roadmap can be generated from the level alone, with no CV or skills", as
     assert.equal(result.skillGap.gapSkills.length, 1);
 
     // The prompt must tell the AI to infer a profile from the level.
-    assert.match(capturedPrompt, /INFER a realistic skill profile/i);
+    assert.match(capturedPrompt, /SUY LUẬN một hồ sơ kỹ năng thực tế/i);
     assert.match(capturedPrompt, /"lead"/);
     assert.match(capturedPrompt, /"junior"/);
   } finally {

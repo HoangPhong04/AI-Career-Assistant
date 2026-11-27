@@ -72,9 +72,11 @@ export async function POST(req: NextRequest) {
     await prisma.careerGoal.create({
       data: {
         userId: user.id,
-        title: `${input.targetRole} @ ${input.currentLevel}`,
+        title: `${input.targetRole} @ ${input.targetLevel ?? input.currentLevel}`,
         targetRole: input.targetRole,
-        targetLevel: input.currentLevel,
+        // The goal describes the level the user wants to reach, not the one
+        // they are at right now.
+        targetLevel: input.targetLevel ?? input.currentLevel,
       },
     });
   } catch (dbErr) {

@@ -17,6 +17,7 @@ import {
 } from "@/lib/career";
 import { resolveCvSkills } from "@/lib/career/skill-repository";
 import { RoadmapStepUpdateSchema } from "@/lib/career/validators";
+import { resolveAddressedSkill } from "@/lib/career/progress";
 import { NextRequest } from "next/server";
 import type { CareerAnalyzeInput } from "@/lib/career";
 import { belongsToUser } from "@/lib/access-control";
@@ -41,7 +42,20 @@ export async function POST(req: NextRequest) {
     return apiError(422, "VALIDATION_ERROR", parsed.error.message);
   }
 
-  const requestedCvId = parsed.data.cvId;
+  // The client may pass the CV id as a query param (`?cvId=…`) as well as in
+  // the body. Both are accepted, but they must not disagree — otherwise the
+  // roadmap would be linked to a CV the user did not pick in the form.
+  const queryCvId = req.nextUrl.searchParams.get("cvId") ?? undefined;
+  const bodyCvId = parsed.data.cvId;
+  if (queryCvId && bodyCvId && queryCvId !== bodyCvId) {
+    return apiError(
+      422,
+      "VALIDATION_ERROR",
+      "cvId trong URL và trong body không khớp nhau."
+    );
+  }
+
+  const requestedCvId = bodyCvId ?? queryCvId;
   let input: CareerAnalyzeInput = parsed.data;
   let cvId = requestedCvId;
 
@@ -90,7 +104,15 @@ export async function POST(req: NextRequest) {
         targetLevel: input.targetLevel ?? input.currentLevel,
         currentSkills: (input.currentSkills ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         missingSkills: result.skillGap.gapSkills.map((s) => s.skill) ?? Prisma.JsonNull,
-        roadmapJson: result.roadmap as unknown as Prisma.InputJsonValue,
+        // The full skill-gap payload lives in its own column: the gap score,
+        // the summary and each skill's reason/importance are lost when only
+        // the skill names are kept in `missingSkills`.
+        skillGapJson: result.skillGap as unknown as Prisma.InputJsonValue,
+        overallGapScore: result.skillGap.overallGapScore,
+        // Store the whole result, not just the `roadmap` sub-tree — otherwise
+        // `skillGap` and `careerAdvice` are lost and the detail page falls
+        // back to a 0 gap score.
+        roadmapJson: result as unknown as Prisma.InputJsonValue,
         status: "ACTIVE",
         steps: {
           create: result.roadmap.phases.flatMap((phase, phaseIdx) =>
@@ -100,6 +122,14 @@ export async function POST(req: NextRequest) {
               orderIndex: phaseIdx * 100 + taskIdx,
               resources: { phase: phase.phase, ...task.resources } as unknown as Prisma.InputJsonValue,
               status: "PENDING",
+              // The link to the gap skill this task closes. Only keep it when
+              // it actually points at one of the gap skills — an AI answer
+              // that paraphrases the name would otherwise create a link that
+              // never matches.
+              addressesSkill: resolveAddressedSkill(
+                task.addressesSkill,
+                result.skillGap.gapSkills.map((s) => s.skill)
+              ),
             }))
           ),
         },

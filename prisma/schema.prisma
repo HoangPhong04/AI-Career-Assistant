@@ -94,10 +94,16 @@ model CareerRoadmap {
   goalId        String?       @map("goal_id") @db.Uuid
   targetRole    String        @map("target_role") @db.VarChar(100)
   targetLevel   String?       @map("target_level") @db.VarChar(20)
-  currentSkills Json?         @map("current_skills") @db.JsonB
-  missingSkills Json?         @map("missing_skills") @db.JsonB
-  roadmapJson   Json?         @map("roadmap_json") @db.JsonB
-  status        String        @default("DRAFT") @db.VarChar(20)
+  currentSkills   Json?         @map("current_skills") @db.JsonB
+  missingSkills   Json?         @map("missing_skills") @db.JsonB
+  /// The full skill-gap payload (gap skills with their reason/importance,
+  /// matched skills, gap score and summary) as returned by the AI.
+  skillGapJson    Json?         @map("skill_gap_json") @db.JsonB
+  /// Denormalized copy of `skillGapJson.overallGapScore` for sorting and
+  /// reporting. NULL means the score was never captured (legacy rows).
+  overallGapScore Float?        @map("overall_gap_score")
+  roadmapJson     Json?         @map("roadmap_json") @db.JsonB
+  status          String        @default("DRAFT") @db.VarChar(20)
   createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamp(6)
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -118,6 +124,10 @@ model RoadmapStep {
   endDate     DateTime?     @map("end_date") @db.Date
   status      String        @default("PENDING") @db.VarChar(255)
   resources   Json?         @db.JsonB
+  /// The gap skill this step closes — copied verbatim from
+  /// `skillGap.gapSkills[].skill`. NULL when the step addresses no specific
+  /// skill, or when the roadmap predates this link.
+  addressesSkill String?    @map("addresses_skill") @db.VarChar(200)
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
   roadmap     CareerRoadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
 

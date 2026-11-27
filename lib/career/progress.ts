@@ -29,6 +29,8 @@ export type ProgressStep = {
   status: string;
   orderIndex?: number;
   title?: string;
+  /** The gap skill this step closes, if the roadmap records the link. */
+  addressesSkill?: string | null;
 };
 
 /** Statuses that count towards the completion percentage. */
@@ -66,6 +68,108 @@ export function summarizeProgress(steps: ProgressStep[]): {
   const completed = steps.filter((step) => step.status === COMPLETED_STATUS).length;
   const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
   return { completed, total, percent };
+}
+
+/**
+ * Match the skill a task claims to address against the real gap skills.
+ *
+ * The AI is asked to copy the skill name verbatim, but it sometimes
+ * paraphrases it. A link is only kept when it clearly points at one of the
+ * gap skills — an unmatched value would create a step that can never move
+ * the "skills addressed" counter.
+ *
+ * Returns the canonical gap-skill name, or null when there is no match.
+ */
+export function resolveAddressedSkill(
+  claimed: string | undefined | null,
+  gapSkills: string[]
+): string | null {
+  if (!claimed || !claimed.trim()) return null;
+  if (gapSkills.length === 0) return null;
+
+  const normalize = (value: string) => value.trim().toLowerCase();
+  const target = normalize(claimed);
+
+  // Exact match (case-insensitive) — the normal case.
+  const exact = gapSkills.find((skill) => normalize(skill) === target);
+  if (exact) return exact;
+
+  // A gap skill often reads as "Title (Parentheses, details)". The AI may
+  // quote only the headline part, so compare against that too.
+  const headline = (skill: string) =>
+    normalize(skill.split("(")[0] ?? skill);
+  const byHeadline = gapSkills.find((skill) => headline(skill) === target);
+  if (byHeadline) return byHeadline;
+
+  // Last resort: one name contains the other. Guarded by a length check so
+  // short, generic words do not match everything. The shorter string must
+  // be long enough to be a meaningful technology term.
+  if (target.length >= 6) {
+    const contained = gapSkills.find((skill) => {
+      const norm = normalize(skill);
+      const head = headline(skill);
+      return norm.includes(target) || target.includes(head);
+    });
+    if (contained) return contained;
+  }
+
+  return null;
+}
+
+/**
+ * How many of the missing skills the user has already tackled.
+ *
+ * A gap skill counts as "addressed" once at least one step that targets it
+ * is completed. Steps without an `addressesSkill` link cannot be attributed
+ * to any skill, so they never move this number — the UI reports them
+ * separately so the progress stays honest.
+ *
+ * Returns null when the roadmap does not track the link at all (older
+ * roadmaps), because "0 of 6" would be misleading there.
+ */
+export function summarizeAddressedSkills(
+  steps: ProgressStep[],
+  gapSkills: string[]
+): { addressed: number; total: number; percent: number } | null {
+  if (gapSkills.length === 0) return null;
+
+  const linked = steps.filter((step) => step.addressesSkill);
+  if (linked.length === 0) return null;
+
+  // A skill counts as addressed when a completed step targets it. The
+  // comparison is case-insensitive because the AI may capitalise differently
+  // between the gap list and the task list.
+  const normalize = (value: string) => value.trim().toLowerCase();
+  const completedTargets = new Set(
+    steps
+      .filter((step) => step.status === COMPLETED_STATUS && step.addressesSkill)
+      .map((step) => normalize(step.addressesSkill as string))
+  );
+
+  const addressed = gapSkills.filter((skill) =>
+    completedTargets.has(normalize(skill))
+  ).length;
+
+  return {
+    addressed,
+    total: gapSkills.length,
+    percent: Math.round((addressed / gapSkills.length) * 100),
+  };
+}
+
+/**
+ * Estimate the remaining gap by reducing the original score in proportion to
+ * the gap skills marked as addressed. This reflects roadmap progress, not a
+ * reassessment of the user's actual proficiency.
+ */
+export function estimateRemainingGapScore(
+  initialGapScore: number,
+  progress: { addressed: number; total: number } | null
+): number {
+  if (!progress || progress.total === 0) return initialGapScore;
+
+  const remainingSkills = Math.max(0, progress.total - progress.addressed);
+  return Math.round(initialGapScore * (remainingSkills / progress.total));
 }
 
 /**

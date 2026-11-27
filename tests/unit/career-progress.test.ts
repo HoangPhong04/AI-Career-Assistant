@@ -10,7 +10,10 @@ import test from "node:test";
 import {
   buildRoadmapProgress,
   cvSelectionHint,
+  estimateRemainingGapScore,
   nextStepStatus,
+  resolveAddressedSkill,
+  summarizeAddressedSkills,
   summarizeProgress,
 } from "@/lib/career";
 import { RoadmapStepUpdateSchema } from "@/lib/career/validators";
@@ -210,4 +213,144 @@ test("cvSelectionHint points to AI inference when no CV is picked", () => {
   const hint = cvSelectionHint("", 0, 2);
 
   assert.match(hint, /AI tự suy luận kỹ năng từ cấp bậc hiện tại/i);
+});
+
+// ─── resolveAddressedSkill ───────────────────────────────────────────────────
+
+const GAP_SKILLS = [
+  "Hệ điều hành thời gian thực (FreeRTOS / RTOS Architecture)",
+  "Kiểm thử phần mềm nhúng (Unit Testing & Static Analysis)",
+  "TypeScript",
+  "Các chuẩn giao tiếp nâng cao (CAN Bus, Ethernet, BLE)",
+];
+
+test("resolveAddressedSkill matches an exact skill name", () => {
+  assert.equal(resolveAddressedSkill("TypeScript", GAP_SKILLS), "TypeScript");
+});
+
+test("resolveAddressedSkill matches case-insensitively", () => {
+  assert.equal(resolveAddressedSkill("typescript", GAP_SKILLS), "TypeScript");
+});
+
+test("resolveAddressedSkill matches the headline of a skill with details", () => {
+  assert.equal(
+    resolveAddressedSkill("Kiểm thử phần mềm nhúng", GAP_SKILLS),
+    "Kiểm thử phần mềm nhúng (Unit Testing & Static Analysis)"
+  );
+});
+
+test("resolveAddressedSkill matches a technology inside the skill name", () => {
+  assert.equal(
+    resolveAddressedSkill("FreeRTOS", GAP_SKILLS),
+    "Hệ điều hành thời gian thực (FreeRTOS / RTOS Architecture)"
+  );
+});
+
+test("resolveAddressedSkill returns null for an unrelated claim", () => {
+  assert.equal(resolveAddressedSkill("Kubernetes", GAP_SKILLS), null);
+});
+
+test("resolveAddressedSkill returns null when nothing is claimed", () => {
+  assert.equal(resolveAddressedSkill(undefined, GAP_SKILLS), null);
+  assert.equal(resolveAddressedSkill("", GAP_SKILLS), null);
+  assert.equal(resolveAddressedSkill("   ", GAP_SKILLS), null);
+});
+
+test("resolveAddressedSkill returns null when there are no gap skills", () => {
+  assert.equal(resolveAddressedSkill("TypeScript", []), null);
+});
+
+// ─── summarizeAddressedSkills ────────────────────────────────────────────────
+
+test("summarizeAddressedSkills counts the skills closed by completed steps", () => {
+  const result = summarizeAddressedSkills(
+    [
+      {
+        id: "1",
+        status: "COMPLETED",
+        addressesSkill: "TypeScript",
+      },
+      {
+        id: "2",
+        status: "PENDING",
+        addressesSkill: "Kiểm thử phần mềm nhúng (Unit Testing & Static Analysis)",
+      },
+    ],
+    ["TypeScript", "Kiểm thử phần mềm nhúng (Unit Testing & Static Analysis)"]
+  );
+
+  assert.equal(result?.addressed, 1);
+  assert.equal(result?.total, 2);
+  assert.equal(result?.percent, 50);
+});
+
+test("summarizeAddressedSkills ignores steps that are not completed", () => {
+  const result = summarizeAddressedSkills(
+    [
+      { id: "1", status: "IN_PROGRESS", addressesSkill: "TypeScript" },
+      { id: "2", status: "PENDING", addressesSkill: "TypeScript" },
+    ],
+    ["TypeScript"]
+  );
+
+  assert.equal(result?.addressed, 0);
+  assert.equal(result?.percent, 0);
+});
+
+test("summarizeAddressedSkills ignores steps without a skill link", () => {
+  const result = summarizeAddressedSkills(
+    [
+      { id: "1", status: "COMPLETED", addressesSkill: null },
+      { id: "2", status: "COMPLETED" },
+    ],
+    ["TypeScript"]
+  );
+
+  // No step carries the link, so the roadmap does not track it at all.
+  assert.equal(result, null);
+});
+
+test("summarizeAddressedSkills returns null when there are no gap skills", () => {
+  const result = summarizeAddressedSkills(
+    [{ id: "1", status: "COMPLETED", addressesSkill: "TypeScript" }],
+    []
+  );
+
+  assert.equal(result, null);
+});
+
+test("summarizeAddressedSkills matches the skill name case-insensitively", () => {
+  const result = summarizeAddressedSkills(
+    [{ id: "1", status: "COMPLETED", addressesSkill: "typescript" }],
+    ["TypeScript"]
+  );
+
+  assert.equal(result?.addressed, 1);
+});
+
+test("summarizeAddressedSkills counts a skill once even with several steps", () => {
+  const result = summarizeAddressedSkills(
+    [
+      { id: "1", status: "COMPLETED", addressesSkill: "TypeScript" },
+      { id: "2", status: "COMPLETED", addressesSkill: "TypeScript" },
+    ],
+    ["TypeScript", "React"]
+  );
+
+  assert.equal(result?.addressed, 1);
+  assert.equal(result?.total, 2);
+  assert.equal(result?.percent, 50);
+});
+
+// ─── estimateRemainingGapScore ───────────────────────────────────────────────
+
+test("estimateRemainingGapScore decreases with addressed skills and reaches zero", () => {
+  assert.equal(estimateRemainingGapScore(80, { addressed: 1, total: 4 }), 60);
+  assert.equal(estimateRemainingGapScore(80, { addressed: 3, total: 4 }), 20);
+  assert.equal(estimateRemainingGapScore(80, { addressed: 4, total: 4 }), 0);
+});
+
+test("estimateRemainingGapScore keeps the initial score when progress is unavailable", () => {
+  assert.equal(estimateRemainingGapScore(45, null), 45);
+  assert.equal(estimateRemainingGapScore(45, { addressed: 0, total: 0 }), 45);
 });

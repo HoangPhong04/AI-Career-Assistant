@@ -78,6 +78,21 @@ export const SkillGapSchema = z.object({
 });
 export type SkillGap = z.infer<typeof SkillGapSchema>;
 
+/**
+ * The skill gap as it is read back from the database.
+ *
+ * `overallGapScore` is nullable here: `null` means the score was never
+ * captured (a roadmap written before the score was persisted), which is
+ * different from `0` — a real score meaning "there is no gap at all".
+ * The AI-facing `SkillGapSchema` stays strict so a malformed AI response
+ * is still rejected.
+ */
+export const PersistedSkillGapSchema = SkillGapSchema.extend({
+  overallGapScore: z.number().min(0).max(100).nullable(),
+  gapSummary: z.string().nullable(),
+});
+export type PersistedSkillGap = z.infer<typeof PersistedSkillGapSchema>;
+
 export const RoadmapPhaseSchema = z.object({
   phase: z.string().describe("e.g. Phase 1: Foundation (Month 1–2)"),
   goals: z.array(z.string()),
@@ -86,6 +101,15 @@ export const RoadmapPhaseSchema = z.object({
       title: z.string(),
       description: z.string().optional(),
       estimatedDays: z.number().optional(),
+      /**
+       * The gap skill this task is meant to close.
+       *
+       * The value must be copied verbatim from one of the `skillGap.gapSkills`
+       * entries so the progress tracker can tell which skills the user has
+       * already tackled. Tasks that address no specific gap skill may omit
+       * the field.
+       */
+      addressesSkill: z.string().optional(),
       resources: z
         .array(
           z.object({
@@ -120,6 +144,19 @@ export const CareerAnalyzeResultSchema = z.object({
     .optional(),
 });
 export type CareerAnalyzeResult = z.infer<typeof CareerAnalyzeResultSchema>;
+
+/**
+ * A roadmap read back from the database.
+ *
+ * Same shape as `CareerAnalyzeResult`, except the gap score may be `null`
+ * for rows written before the score was persisted.
+ */
+export const PersistedCareerAnalyzeResultSchema = CareerAnalyzeResultSchema.extend({
+  skillGap: PersistedSkillGapSchema,
+});
+export type PersistedCareerAnalyzeResult = z.infer<
+  typeof PersistedCareerAnalyzeResultSchema
+>;
 
 // ─── Progress tracking schemas ────────────────────────────────────────────────
 
